@@ -17,12 +17,23 @@ def mainPage() {
 			input "thisName", "text", title: "Application name", submitOnChange: true
             if(thisName) app.updateLabel("$thisName")
         }
-        section {
-            input "minutes", "number", required: true, title: "Away after X minutes of inactivity"
+        section("Setup") {
+            input "pollRate", "number", required: true, title: "Poll rate (seconds)"
+            input "timeout", "number", required: true, title: "Away after X seconds of inactivity"
+            input "powerThreshold", "number", required: true, title: "min power to declare active"
         }
         section {        
-			input "presenceSensors", "capability.presenceSensor", title: "Select Presence Sensors", submitOnChange: true, required: true, multiple: true
+			input "presenceSensors", "capability.presenceSensor", title: "Select Presence Sensors", submitOnChange: true, required: false, multiple: true
 		}
+        section {        
+			input "motionSensors", "capability.motionSensor", title: "Select motion Sensors", submitOnChange: true, required: false, multiple: true
+		}
+        section {        
+			input "contactSensors", "capability.contactSensor", title: "Select contact Sensors", submitOnChange: true, required: false, multiple: true
+		}                
+        section {        
+			input "powerMeters", "capability.powerMeter", title: "Select power meters", submitOnChange: true, required: false, multiple: true
+		}                
 	}
 }
 
@@ -37,68 +48,71 @@ def updated() {
 
 def initialize() {
 	// log.info "initialize"
-
-    state.clear()    
     
     // Create master presence device
     masterPresence = getChildDevice("Presence_${app.id}")
 	if(!masterPresence)
     {
-        masterPresence = addChildDevice("hubitat", "Virtual Presence", "Presence_${app.id}", null, [label: thisName, name: thisName])
+        addChildDevice("hubitat", "Virtual Presence", "Presence_${app.id}", null, [label: thisName, name: thisName])
     }
     
     // Subscribe to all devices
     subscribe(presenceSensors, "presence", presenceHandler)
+    subscribe(motionSensors, "motion", motionHandler)
+    subscribe(contactSensors, "contact", contactHandler)
+    subscribe(powerMeters, "power", powerHandler)
     
-    // Reset states
-    initializeDefaultState()
+    // Start!
+    state.lastActivity = 0
+    checkStatus()
 }
 
 // Private methods
 
 def checkStatus() {
     // log.info "checkStatus"
-   
-    masterPresence = getChildDevice("Presence_${app.id}")
     
     def presenceDetected = false
-    state.deviceStatus.each { key, val ->
-        if ( val == true ) {
+
+    presenceSensors.each { device ->
+        if ( device.currentValue("presence") == "present" ) {
             presenceDetected = true
         }
     }
-
+    
+    if ( presenceDetected == false ) {
+        motionSensors.each { device ->
+            if ( device.currentValue("motion") == "active" ) {
+                presenceDetected = true
+            }
+        }    
+    }
+    
+    if ( presenceDetected == false ) {
+        powerMeters.each { device ->
+            if ( device.currentValue("power") > powerThreshold ) {
+                presenceDetected = true
+            }
+        }    
+    }    
+    
     if (presenceDetected == true) {
-        setDeviceState(masterPresence, true)
+        setMasterState(true)
     } else {
-        // how long since last motion
-        def elapsed = now() - state.lastMotion
-        //log.info "elapsed ${elapsed}"
-        if ( elapsed > ( minutes * 60 * 1000 ) ) {
-            setDeviceState(masterPresence, false)
+        // how long since last activity
+        def elapsed = now() - state.lastActivity
+        if ( elapsed > ( timeout * 1000 ) ) {
+            setMasterState(false)
         }
     }
-    runIn(30, checkStatus)
+    runIn(pollRate, checkStatus)
 }
 
-def initializeDefaultState() {
-    log.info "initializeDefaultState"
-    setDeviceState(masterPresence, false)
-    state.lastMotion = 0
-    state.deviceStatus = [:]
-    presenceSensors.each { device ->
-        // log.info "initializeDefaultState ${device.displayName} ${device.currentValue("presence")}"
-        if ( device.currentValue("presence") == "present" ) {
-            state.deviceStatus["${device.displayName}"] = true
-        } else {
-            state.deviceStatus["${device.displayName}"] = false
-        }
-    }
-    checkStatus()
-}
-
-def setDeviceState(device, present) {
+def setMasterState(present) {
+    device = getChildDevice("Presence_${app.id}")
+    state.masterState = present
     if ( present == true ) {
+        state.lastActivity = now()
         if ( device.currentValue("presence") != "present" ) {
             device.arrived()
         }
@@ -107,19 +121,34 @@ def setDeviceState(device, present) {
             device.departed()
         }
     }
-    state.masterState = present
 }
 
 // Event handlers
 
 def presenceHandler(evt) {
-    log.info "presenceHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
+    // log.info "presenceHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
     if ( evt.value == "present" ) {
-        state.deviceStatus["${evt.displayName}"] = true
-        state.lastMotion = now()
-        masterPresence = getChildDevice("Presence_${app.id}")
-        setDeviceState(masterPresence, true)
-    } else {
-        state.deviceStatus["${evt.displayName}"] = false
+        setMasterState(true)
     }
 }
+
+def motionHandler(evt) {
+    // log.info "motionHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
+    if ( evt.value == "active" ) {
+        setMasterState(true)
+    }
+}
+
+def contactHandler(evt) {
+    // log.info "contactHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
+    // For a contact, anything == presence
+    setMasterState(true)
+}
+
+def powerHandler(evt) {
+    // log.info "powerHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
+    if ( evt.floatValue > powerThreshold ) {
+        setMasterState(true)
+    }
+}
+
