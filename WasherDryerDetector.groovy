@@ -41,10 +41,10 @@ def initialize() {
 	log.info "initialize"
 
     // Create master switch device
-    masterSwitch = getChildDevice("Switch_${app.id}")
-	if(!masterSwitch)
+    masterSensor = getChildDevice("Contact_${app.id}")
+	if(!masterSensor)
     {
-        addChildDevice("hubitat", "Virtual Switch", "Switch_${app.id}", null, [label: thisName, name: thisName])
+        addChildDevice("hubitat", "Virtual Contact Sensor", "Contact_${app.id}", null, [label: thisName, name: thisName])
     }
     
     // Subscribe
@@ -69,7 +69,7 @@ def checkStatus() {
     pauseExecution(5000)    
     
     // Read status
-    masterSwitch = getChildDevice("Switch_${app.id}")
+    masterSensor = getChildDevice("Contact_${app.id}")
     vibrating = false
     if ( accelerationSensor.currentValue("acceleration") == "active" ) {
         vibrating = true
@@ -82,7 +82,7 @@ def checkStatus() {
             if ( state.tick >= stopped ) {
                 state.tick = 0
                 state.active = false;
-                masterSwitch.off()
+                masterSensor.close()
             }
         } else {
             state.tick = 0
@@ -94,7 +94,7 @@ def checkStatus() {
             if ( state.tick >= started ) {
                 state.tick = 0
                 state.active = true;
-                masterSwitch.on()
+                masterSensor.open()
             }
         } else {
             state.tick = 0        
@@ -108,6 +108,8 @@ def checkStatus() {
 
 // Event handlers
 
+/*
 def accelerationHandler(evt) {
     log.info "accelerationHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
 }
+*/
