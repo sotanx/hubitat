@@ -1,8 +1,8 @@
 definition(
-    name: "Vibration detector",
+    name: "Device Power Meter",
     namespace: "hubitat",
     author: "David Hebert",
-    description: "If X running or not? Uses Aeon Multisensor 6 reset Tamper function (for Alexa integration)",
+    description: "Detect if the device is currently used or not ( for integration for Alexa )",
     category: "Convenience",
     iconUrl: "",
     iconX2Url: "")
@@ -19,11 +19,12 @@ def mainPage() {
         }
         section("Setup") {
             input "pollRate", "number", required: true, title: "Cycle rate (seconds)"
-            input "started", "number", required: true, title: "Started after X vibration cycle"
-            input "stopped", "number", required: true, title: "Stopped after X no vibration cycle"
+            input "powerThreshold", "number", required: true, title: "Minimum power threshold (watt)"
+            input "started", "number", required: true, title: "Started after X cycle where power > threshold"
+            input "stopped", "number", required: true, title: "Stopped after X cycle where power < threshold"
         }
         section {        
-			input "accelerationSensor", "capability.accelerationSensor", title: "Select vibration Sensor", submitOnChange: true, required: true, multiple: false
+			input "powerSensor", "capability.powerMeter", title: "Select power meter", submitOnChange: true, required: true, multiple: false
 		}
 	}
 }
@@ -41,15 +42,12 @@ def initialize() {
 	log.info "initialize"
 
     // Create master switch device
-    masterSensor = getChildDevice("Contact_${app.id}")
+    masterContact = getChildDevice("Contact_${app.id}")
 	if(!masterSensor)
     {
         addChildDevice("hubitat", "Virtual Contact Sensor", "Contact_${app.id}", null, [label: thisName, name: thisName])
     }
-    
-    // Subscribe
-    // subscribe(accelerationSensor, "acceleration", accelerationHandler)
-    
+   
     // Start!
     state.active = false;
     state.tick = 0;
@@ -61,55 +59,37 @@ def initialize() {
 def checkStatus() {
     // log.info "checkStatus"
     
-    // Is the sensor active or not?
-    // First reset it
-    accelerationSensor.resetTamperAlert()
-    
-    // Wait 5 sec
-    pauseExecution(5000)    
-    
     // Read status
-    masterSensor = getChildDevice("Contact_${app.id}")
-    vibrating = false
-    if ( accelerationSensor.currentValue("acceleration") == "active" ) {
-        vibrating = true
-    }
+    currentPower = powerSensor.currentValue("power")
     
     if ( state.active == true ) {
         // Currently active... waiting for off
-        if ( vibrating == false ) {
+        if ( currentPower < powerThreshold ) {
             state.tick = state.tick + 1;
             if ( state.tick >= stopped ) {
                 state.tick = 0
                 state.active = false;
-                masterSensor.close()
+                masterContact = getChildDevice("Contact_${app.id}")
+                masterContact.close()
             }
         } else {
             state.tick = 0
         }
     } else {
         // Currently inactive... waiting for on
-        if ( vibrating == true ) {
+        if ( currentPower >= powerThreshold ) {
             state.tick = state.tick + 1;
             if ( state.tick >= started ) {
                 state.tick = 0
                 state.active = true;
-                masterSensor.open()
+                masterContact = getChildDevice("Contact_${app.id}")
+                masterContact.open()
             }
         } else {
             state.tick = 0        
         }
     }
     
-    log.info "State = ${state.active}, cycle = ${state.tick}"
-    runIn(pollRate - 5, checkStatus)
+    log.info "State = ${state.active}, cycle = ${state.tick}, power = ${currentPower}"
+    runIn(pollRate, checkStatus)
 }
-
-
-// Event handlers
-
-/*
-def accelerationHandler(evt) {
-    log.info "accelerationHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})"
-}
-*/
