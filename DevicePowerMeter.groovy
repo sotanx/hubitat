@@ -43,7 +43,7 @@ def initialize() {
 
     // Create master switch device
     masterContact = getChildDevice("Contact_${app.id}")
-	if(!masterSensor)
+	if(!masterContact)
     {
         addChildDevice("hubitat", "Virtual Contact Sensor", "Contact_${app.id}", null, [label: thisName, name: thisName])
     }
