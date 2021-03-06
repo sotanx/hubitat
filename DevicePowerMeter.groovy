@@ -30,7 +30,7 @@ def mainPage() {
 }
 
 def installed() {
-	initialize()
+    initialize()
 }
 
 def updated() {
@@ -39,26 +39,31 @@ def updated() {
 }
 
 def initialize() {
-	log.info "initialize"
-
     // Create master switch device
     masterContact = getChildDevice("Contact_${app.id}")
 	if(!masterContact)
     {
+        log.info "add device Contact_${app.id}"
         addChildDevice("hubitat", "Virtual Contact Sensor", "Contact_${app.id}", null, [label: thisName, name: thisName])
     }
+
+    // Subscribe
+    subscribe(location, "systemStart", rebooted)
    
     // Start!
     state.active = false;
     state.tick = 0;
+    state.VirtualContact = masterContact.displayName;
     checkStatus()
 }
 
 // Private methods
 
+def rebooted(evt) {
+    initialize();
+}
+
 def checkStatus() {
-    // log.info "checkStatus"
-    
     // Read status
     currentPower = powerSensor.currentValue("power")
     
@@ -71,6 +76,7 @@ def checkStatus() {
                 state.active = false;
                 masterContact = getChildDevice("Contact_${app.id}")
                 masterContact.close()
+                log.info "Contact closed"
             }
         } else {
             state.tick = 0
@@ -84,6 +90,7 @@ def checkStatus() {
                 state.active = true;
                 masterContact = getChildDevice("Contact_${app.id}")
                 masterContact.open()
+                log.info "Contact opened"
             }
         } else {
             state.tick = 0        

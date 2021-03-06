@@ -39,6 +39,7 @@ def initialize() {
     subscribe(door, "lock", checkStatus)
     subscribe(openSensor, "contact.closed", checkStatus)
     subscribe(openSensor, "contact.open", checkStatus)    
+    subscribe(location, "systemStart", rebooted)
     state.doorLocked = false;
     state.doorIsOpen = false;
     state.waitingDelay = false;
@@ -46,6 +47,10 @@ def initialize() {
 }
 
 // Private methods
+
+def rebooted(evt) {
+    door.lock(); // after a reboot, the door lock state isn't correct, make sure the door is locked
+}
 
 def checkStatus(evt) {
     if ( door.currentValue("lock") == "locked" ) {
