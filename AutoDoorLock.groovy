@@ -43,13 +43,18 @@ def initialize() {
     state.doorLocked = false;
     state.doorIsOpen = false;
     state.waitingDelay = false;
-    checkStatus()
+    safetyCheck()
 }
 
 // Private methods
 
 def rebooted(evt) {
     door.lock(); // after a reboot, the door lock state isn't correct, make sure the door is locked
+}
+
+def safetyCheck(evt) {
+    checkStatus();
+    runIn(300, safetyCheck);
 }
 
 def checkStatus(evt) {
@@ -69,7 +74,7 @@ def checkStatus(evt) {
             if ( state.waitingDelay == false ) {
                 state.waitingDelay = true;
                 log.debug "Waiting for the delay to lock the door"
-                runIn(lockDelay, checkStatus)            
+                runIn(lockDelay, checkStatus);
             } else {
                 log.debug "Locking the door!"
                 door.lock();
