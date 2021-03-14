@@ -24,6 +24,7 @@ def mainPage() {
             input "doorLight", "capability.switch", title: "Door light"
             input "lockDelay", "number", required: true, title: "Locking delay (seconds)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
+            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
         }
 	}
 }
@@ -38,30 +39,35 @@ def updated() {
 }
 
 def initialize() {
-	log.info "initialize"
-    subscribe(door, "lock", checkStatus)
-    subscribe(openSensor, "contact.closed", checkStatus)
-    subscribe(openSensor, "contact.open", checkStatus)    
-    subscribe(doorBellButton, "switch.off", checkStatus)
-    subscribe(doorBellButton, "switch.on", checkStatus)    
-    subscribe(location, "systemStart", rebooted)
+	trace("initialize", false);
+    subscribe(door, "lock", checkStatus);
+    subscribe(openSensor, "contact.closed", checkStatus);
+    subscribe(openSensor, "contact.open", checkStatus);    
+    subscribe(doorBellButton, "switch.off", checkStatus);
+    subscribe(doorBellButton, "switch.on", checkStatus);
+    subscribe(doorLight, "switch.on", checkStatus);
+    subscribe(location, "systemStart", rebooted);
     state.waitingLockDelay = false;
     state.waitingLightDelay = false;
-    safetyCheck()
+    safetyCheck();
+    checkStatus();
 }
 
 // Private methods
 
 // after a reboot, the door lock state might be wrong... explicitly make sure the door is locked
 def rebooted(evt) {
-    door.lock(); 
+    trace("rebooted", false);
+    door.lock();
+    initialize(); 
 }
 
 // Make sure the door is lock... no matter what!
 def safetyCheck(evt) {
+    trace("safetyCheck", true);
     if ( openSensor.currentValue("contact") == "closed" ) {
         if ( door.currentValue("lock") == "unlocked" ) {
-            log.debug "Safety: Locking the door!"
+            trace("Safety: Locking the door!", false);
             door.lock();
         }
     }
@@ -69,7 +75,7 @@ def safetyCheck(evt) {
 }
 
 def checkStatus(evt) {
-    log.debug "Door is ${door.currentValue("lock")} and ${openSensor.currentValue("contact")}. Light is ${doorLight.currentValue("switch")}"
+    trace("CheckStatus: Door is ${door.currentValue("lock")} and ${openSensor.currentValue("contact")}. Light is ${doorLight.currentValue("switch")} (Mode ${location.getMode()})", true);
     checkLock();
     checkLight();
 }
@@ -81,17 +87,17 @@ def checkLock() {
     } else {
         if ( openSensor.currentValue("contact") == "open" ) {
             state.waitingLockDelay = false;
-            log.debug "door is still opened.. waiting for events"
+            trace("door is still opened.. waiting for events", true);
         } else {
             if ( state.waitingLockDelay == false ) {
                 state.waitingLockDelay = true;
                 state.delayLockTime = now()
-                log.debug "Waiting for the delay to lock the door"
+                trace("Waiting for the delay to lock the door", true)
                 runIn(lockDelay, checkLock);
             } else {
                 def elapsed = now() - state.delayLockTime
                 if ( elapsed > ( lockDelay * 1000 ) ) {
-                    log.debug "Locking the door!"
+                    trace("Locking the door!", false);
                     door.lock();
                 }
             }
@@ -105,9 +111,8 @@ def checkLight() {
         state.waitingLightDelay = false;
         if ( ( openSensor.currentValue("contact") == "open" ) || ( doorBellButton.currentValue("switch") == "on" ) ) {
             // either the door is open or the button was pressed
-            def currTime = new Date()
-            if (currTime > location.sunset && currTime < location.sunrise) {
-                log.debug "Turning on the light"
+            if (location.getMode() != "Day") {
+                trace("Turning on the light (${location.getMode()})", false);
                 doorLight.on();
             }
         }
@@ -121,12 +126,23 @@ def checkLight() {
             } else {
                 def elapsed = now() - state.delayLightTime
                 if ( elapsed > ( lightDelay * 1000 ) ) {
-                    log.debug "Turning off the light"
+                    trace("Turning off the light", false);
                     doorLight.off();
                 }
             }
         } else {
             state.waitingLightDelay = false;
         }        
+    }
+}
+
+// Common
+def trace(message, debug) {
+    if (debug == true) {
+        if (debugEnabled == true) { 
+            log.debug message
+        }        
+    } else {
+        log.info message
     }
 }

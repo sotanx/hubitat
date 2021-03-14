@@ -22,6 +22,7 @@ def mainPage() {
             input "powerThreshold", "number", required: true, title: "Minimum power threshold (watt)"
             input "started", "number", required: true, title: "Started after X cycle where power > threshold"
             input "stopped", "number", required: true, title: "Stopped after X cycle where power < threshold"
+            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
         }
         section {        
 			input "powerSensor", "capability.powerMeter", title: "Select power meter", submitOnChange: true, required: true, multiple: false
@@ -39,11 +40,12 @@ def updated() {
 }
 
 def initialize() {
+    trace("initialize", false);
     // Create master switch device
     masterContact = getChildDevice("Contact_${app.id}")
 	if(!masterContact)
     {
-        log.info "add device Contact_${app.id}"
+        trace("add device Contact_${app.id}", false);
         addChildDevice("hubitat", "Virtual Contact Sensor", "Contact_${app.id}", null, [label: thisName, name: thisName])
     }
 
@@ -76,7 +78,7 @@ def checkStatus() {
                 state.active = false;
                 masterContact = getChildDevice("Contact_${app.id}")
                 masterContact.close()
-                log.info "Contact closed"
+                trace("Contact closed", false);
             }
         } else {
             state.tick = 0
@@ -90,13 +92,24 @@ def checkStatus() {
                 state.active = true;
                 masterContact = getChildDevice("Contact_${app.id}")
                 masterContact.open()
-                log.info "Contact opened"
+                trace("Contact opened", false);
             }
         } else {
             state.tick = 0        
         }
     }
     
-    log.info "State = ${state.active}, cycle = ${state.tick}, power = ${currentPower}"
+    trace("State = ${state.active}, cycle = ${state.tick}, power = ${currentPower}", true);
     runIn(pollRate, checkStatus)
+}
+
+// Common
+def trace(message, debug) {
+    if (debug == true) {
+        if (debugEnabled == true) { 
+            log.debug message
+        }        
+    } else {
+        log.info message
+    }
 }
