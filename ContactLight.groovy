@@ -1,8 +1,8 @@
 definition(
-    name: "MotionLight",
+    name: "ContactLight",
     namespace: "hubitat",
     author: "David Hebert",
-    description: "Open/close light on movement and sunrise/sunset",
+    description: "Open/close light on contact state and sunrise/sunset",
     category: "Convenience",
     iconUrl: "",
     iconX2Url: "")
@@ -19,9 +19,7 @@ def mainPage() {
         }
         section("Setup") {
             input "light", "capability.switch", title: "light switch"
-            input "movement", "capability.switch", title: "Movement sensor (switch)"
-            input "lightLevel", "number", required: true, title: "Light level (0-99)"
-            input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
+            input "sensor", "capability.contactSensor", title: "Contact sensor"
             input "suspendDelay", "number", required: true, title: "Manual suspend delay (seconds)"
             input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
         }
@@ -39,12 +37,12 @@ def updated() {
 
 def initialize() {
 	trace("initialize", false);
-    subscribe(movement, "switch.off", checkStatus);
-    subscribe(movement, "switch.on", checkStatus);
+    subscribe(sensor, "contact.closed", checkStatus);
+    subscribe(sensor, "contact.open", checkStatus);    
     subscribe(light, "switch.off", lightToggled);
     subscribe(light, "switch.on", lightToggled);
+    subscribe(location, "mode", checkStatus)
     subscribe(location, "systemStart", rebooted);
-    state.waitingLightDelay = false;
     state.suspended = false;
     state.systemAction = false;
     checkStatus();
@@ -76,41 +74,32 @@ def checkSuspend(evt) {
 }
 
 def checkStatus(evt) {
-    checkLight();
-}
-
-def checkLight(evt) {
     state.light = light.currentValue("switch");
-    state.movement = movement.currentValue("switch");
-    trace("CheckStatus: light is ${state.light} and movement is ${state.movement} Suspended ${state.suspended} (Mode ${location.getMode()})", true);
+    state.contact = sensor.currentValue("contact");
+    trace("CheckStatus: light is ${state.light} and sensor is ${state.contact} Suspended ${state.suspended} (Mode ${location.getMode()})", true);
 
     if (state.suspended == false) {
         if ( state.light == "off" ) {
-            state.waitingLightDelay = false;
-            if ( state.movement == "on" ) {
+            if ( state.contact == "open" ) {
                 if (location.getMode() != "Day") {
-                    trace("Turning on light to ${lightLevel}%", false);
+                    trace("Turning on light", false);
                     state.systemAction = true;
-                    light.setLevel(lightLevel);
+                    light.on();
                 }
             }
         } else {
             // light is on
-            if ( state.movement == "off" ) {
-                if (state.waitingLightDelay == false) {
-                    state.waitingLightDelay = true;
-                    state.delayLightTime = now()
-                    runIn(lightDelay, checkLight);
-                } else {
-                    def elapsed = now() - state.delayLightTime
-                    if ( elapsed > ( lightDelay * 1000 ) ) {
-                        trace("Turning off the light", false);
-                        state.systemAction = true;
-                        light.off();
-                    }
-                }
+            if ( state.contact == "closed" ) {
+                trace("Turning off the light (contact)", false);
+                state.systemAction = true;
+                light.off();
             } else {
-                state.waitingLightDelay = false;
+                // contact open
+                if (location.getMode() == "Day") {
+                    trace("Turning off the light (Day)", false);
+                    state.systemAction = true;
+                    light.off();
+                } 
             }
         }
     }

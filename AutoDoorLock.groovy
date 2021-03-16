@@ -22,8 +22,10 @@ def mainPage() {
             input "openSensor", "capability.contactSensor", required: true, title: "Door contact sensor"
             input "doorBellButton", "capability.switch", title: "Door bell button"
             input "doorLight", "capability.switch", title: "Door light"
+            input "doorSuspend", "capability.switch", title: "Suspend locking door switch"
             input "lockDelay", "number", required: true, title: "Locking delay (seconds)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
+            input "suspendDelay", "number", required: true, title: "Suspend delay (seconds)"
             input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
         }
 	}
@@ -46,9 +48,12 @@ def initialize() {
     subscribe(doorBellButton, "switch.off", checkStatus);
     subscribe(doorBellButton, "switch.on", checkStatus);
     subscribe(doorLight, "switch.on", checkStatus);
+    subscribe(doorSuspend, "switch.off", checkStatus);
+    subscribe(doorSuspend, "switch.on", checkStatus);
     subscribe(location, "systemStart", rebooted);
     state.waitingLockDelay = false;
     state.waitingLightDelay = false;
+    state.suspended = false;
     safetyCheck();
     checkStatus();
 }
@@ -65,19 +70,43 @@ def rebooted(evt) {
 // Make sure the door is lock... no matter what!
 def safetyCheck(evt) {
     trace("safetyCheck", true);
-    if ( openSensor.currentValue("contact") == "closed" ) {
-        if ( door.currentValue("lock") == "unlocked" ) {
-            trace("Safety: Locking the door!", false);
-            door.lock();
+    if ( doorSuspend.currentValue("switch") == "off" ) {
+        if ( openSensor.currentValue("contact") == "closed" ) {
+            if ( door.currentValue("lock") == "unlocked" ) {
+                trace("Safety: Locking the door!", false);
+                door.lock();
+            }
         }
     }
     runIn(300, safetyCheck);
 }
 
 def checkStatus(evt) {
-    trace("CheckStatus: Door is ${door.currentValue("lock")} and ${openSensor.currentValue("contact")}. Light is ${doorLight.currentValue("switch")} (Mode ${location.getMode()})", true);
+    trace("CheckStatus: Door is ${door.currentValue("lock")} and ${openSensor.currentValue("contact")}. Light is ${doorLight.currentValue("switch")} (Mode ${location.getMode()}) Suspended ${doorSuspend.currentValue("switch")}", true);
+    checkSuspend();
     checkLock();
     checkLight();
+}
+
+// Suspend logic
+def checkSuspend() {
+    if ( doorSuspend.currentValue("switch") == "on" ) {
+        if ( state.suspended == true ) {
+            def elapsed = now() - state.suspendTime
+            if ( elapsed > ( suspendDelay * 1000 ) ) {
+                trace("Removing suspend mode", false);
+                doorSuspend.off();
+            }
+        } else {
+            state.suspended = true;
+            door.unlock();
+            state.suspendTime = now()
+            trace("Waiting for the delay to remove the suspend", true)
+            runIn(suspendDelay, checkSuspend);
+        }
+    } else {
+        state.suspended = false;
+    }
 }
 
 // Lock logic
@@ -97,8 +126,10 @@ def checkLock() {
             } else {
                 def elapsed = now() - state.delayLockTime
                 if ( elapsed > ( lockDelay * 1000 ) ) {
-                    trace("Locking the door!", false);
-                    door.lock();
+                    if ( state.suspended == false ) {
+                        trace("Locking the door!", false);
+                        door.lock();
+                    }
                 }
             }
         }
