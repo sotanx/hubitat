@@ -31,18 +31,21 @@ def installed() {
 }
 
 def updated() {
-    unsubscribe()
     initialize()
 }
 
 def initialize() {
 	trace("initialize", false);
+    unsubscribe();
+    unschedule();
     subscribe(sensor, "contact.closed", checkStatus);
     subscribe(sensor, "contact.open", checkStatus);    
     subscribe(light, "switch.off", lightToggled);
     subscribe(light, "switch.on", lightToggled);
     subscribe(location, "mode", checkStatus)
     subscribe(location, "systemStart", rebooted);
+    state.light = "off";
+    state.contact = "closed";
     state.suspended = false;
     state.systemAction = false;
     checkStatus();

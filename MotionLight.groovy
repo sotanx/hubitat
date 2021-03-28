@@ -18,12 +18,13 @@ def mainPage() {
             if(thisName) app.updateLabel("$thisName")
         }
         section("Setup") {
-            input "light", "capability.switch", title: "light switch"
-            input "movement", "capability.switch", title: "Movement sensor (switch)"
+            input "light", "capability.switch", required: true, title: "Light switch"
+            input "motionSensors", "capability.motionSensor", multiple: true, title: "Motion sensors"
+            input "motionSwitches", "capability.switch", multiple: true, title: "Motion sensors (virtual switch)"
             input "lightLevel", "number", required: true, title: "Light level (0-99)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
             input "suspendDelay", "number", required: true, title: "Manual suspend delay (seconds)"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging"
         }
 	}
 }
@@ -33,16 +34,16 @@ def installed() {
 }
 
 def updated() {
-    unsubscribe()
     initialize()
 }
 
 def initialize() {
 	trace("initialize", false);
-    subscribe(movement, "switch.off", checkStatus);
-    subscribe(movement, "switch.on", checkStatus);
-    subscribe(light, "switch.off", lightToggled);
-    subscribe(light, "switch.on", lightToggled);
+    unsubscribe();
+    unschedule();
+    subscribe(motionSwitches, "switch", checkStatus);
+    subscribe(motionSensors, "motion", checkStatus);
+    subscribe(light, "switch", lightToggled);
     subscribe(location, "systemStart", rebooted);
     state.waitingLightDelay = false;
     state.suspended = false;
@@ -81,13 +82,26 @@ def checkStatus(evt) {
 
 def checkLight(evt) {
     state.light = light.currentValue("switch");
-    state.movement = movement.currentValue("switch");
+    state.movement = false;
+    
+    motionSensors.each { device ->
+        if ( device.currentValue("motion") == "active" ) {
+            state.movement = true;
+        }
+    }    
+
+    motionSwitches.each { device ->
+        if ( device.currentValue("switch") == "on" ) {
+            state.movement = true;
+        }
+    }    
+
     trace("CheckStatus: light is ${state.light} and movement is ${state.movement} Suspended ${state.suspended} (Mode ${location.getMode()})", true);
 
     if (state.suspended == false) {
         if ( state.light == "off" ) {
             state.waitingLightDelay = false;
-            if ( state.movement == "on" ) {
+            if ( state.movement == true ) {
                 if (location.getMode() != "Day") {
                     trace("Turning on light to ${lightLevel}%", false);
                     state.systemAction = true;
@@ -96,7 +110,7 @@ def checkLight(evt) {
             }
         } else {
             // light is on
-            if ( state.movement == "off" ) {
+            if ( state.movement == false ) {
                 if (state.waitingLightDelay == false) {
                     state.waitingLightDelay = true;
                     state.delayLightTime = now()
