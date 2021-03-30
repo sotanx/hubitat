@@ -2,7 +2,7 @@ definition(
     name: "Device Power Meter",
     namespace: "hubitat",
     author: "David Hebert",
-    description: "Detect if the device is currently used or not ( for integration for Alexa )",
+    description: "Detect if the device is currently used or not ( integration for Alexa )",
     category: "Convenience",
     iconUrl: "",
     iconX2Url: "")
@@ -30,17 +30,33 @@ def mainPage() {
 	}
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// System
+/////////////////////////////////////////////////////////////////////////////
+
 def installed() {
     initialize()
 }
 
 def updated() {
-    unsubscribe()
     initialize()
+}
+
+def rebooted(evt) {
+    initialize();
+}
+
+def uninstalled() {
+    trace("uninstalled", true);
+	unschedule();
+	removeChildDevices(getChildDevices());
 }
 
 def initialize() {
     trace("initialize", false);
+    unsubscribe()
+    unschedule();
+
     // Create master switch device
     masterContact = getChildDevice("Contact_${app.id}")
 	if(!masterContact)
@@ -59,11 +75,9 @@ def initialize() {
     checkStatus()
 }
 
-// Private methods
-
-def rebooted(evt) {
-    initialize();
-}
+/////////////////////////////////////////////////////////////////////////////
+// Private
+/////////////////////////////////////////////////////////////////////////////
 
 def checkStatus() {
     // Read status
@@ -103,7 +117,10 @@ def checkStatus() {
     runIn(pollRate, checkStatus)
 }
 
+/////////////////////////////////////////////////////////////////////////////
 // Common
+/////////////////////////////////////////////////////////////////////////////
+
 def trace(message, debug) {
     if (debug == true) {
         if (debugEnabled == true) { 

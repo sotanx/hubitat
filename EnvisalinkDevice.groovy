@@ -13,26 +13,12 @@ metadata {
     ) 
     {
         capability "Initialize"
-        capability "Telnet"
-        capability "Alarm"
-        capability "Switch"
-        capability "Actuator"
-        capability "Polling"
-        capability "TamperAlert"
-        capability "ContactSensor"
-    
-        command "sendTelnetCommand", ["String"]
-        command "StatusReport"
-        command "ArmAway"
-        command "ArmHome"
-        command "ArmNight"
-        command "Disarm"
-        command "ChimeToggle"
-        command "ToggleTimeStamp"
-        command "poll"
-        command "setUserCode", ["String", "Number", "Number"]
-        command "deleteUserCode", ["Number"]
-        command "configureZone", ["Number", "Number"]
+		capability "Telnet"
+
+        command "statusReport"
+        command "configureAllZones"
+        command "createZone", ["Number", "String", "String"]
+        command "deleteZone", ["Number"]
 
         attribute "Status", "string"
         attribute "Codes", "json"
@@ -88,7 +74,7 @@ def initialize() {
 // Driver commands
 /////////////////////////////////////////////////////////////////////////////
 
-def statusReport(){
+def statusReport() {
 	trace("StatusReport", true);
 	sendTelnetCommand(tpiCommands["StatusReport"])
 }
@@ -96,6 +82,53 @@ def statusReport(){
 def poll() {
 	trace("Polling...", true)
     sendTelnetCommand(tpiCommands["Poll"])
+}
+
+def configureAllZones() {
+    createZone(1, "DSC Porte principale", "contact");
+    createZone(2, "DSC Garage", "contact");
+    createZone(3, "DSC Porte patio salon", "contact");
+    createZone(4, "DSC Porte patio chambre parents", "contact");
+    createZone(5, "DSC MS Salon", "motion");
+    createZone(6, "DSC MS Chambre parents", "motion");
+    createZone(9, "DSC Fenetre salon 2", "contact");
+    createZone(10, "DSC Fenetre Loriane", "contact");
+    createZone(11, "DSC Fenetre Aurelie", "contact");
+    createZone(12, "DSC MS salon 2", "motion");
+    createZone(13, "DSC MS Loriane", "motion");
+    createZone(14, "DSC MS Aurelie", "motion");
+}
+
+def createZone(zoneId, name, type) {
+    deleteZone(zoneId);
+	
+    if ( (zoneId < 0) || (zoneId > 64) ) {
+        traceError "zone id out of range ${zoneId}";
+        return;
+    }
+    
+    switch( type ) {
+        case "contact":
+    		addChildDevice("hubitat", "Virtual Contact Sensor", "${device.deviceNetworkId}_C_${zoneId}", [name: "Contact sensor", isComponent: true, label: name]);
+            trace("Contact sensor assigned ${device.deviceNetworkId}_C_${zoneId}", false);
+            break;
+	    case "motion":
+		    addChildDevice("hubitat", "Virtual Motion Sensor", "${device.deviceNetworkId}_M_${zoneId}", [name: "Motion sensor", isComponent: true, label: name]);
+		    def newDevice = getChildDevice("${device.deviceNetworkId}_M_${zoneId}");
+			newDevice.updateSetting("autoInactive",[type:"enum", value:disabled]);
+            trace("Motion sensor Sensor assigned ${device.deviceNetworkId}_M_${zoneId}", false);
+            break;
+        default:
+            traceError("unknown device type ${type}");
+            break;
+	}
+}
+
+def deleteZone(zoneId) {
+    def zoneDevice = getZoneDevice("${zoneId}");
+    if (zoneDevice) {
+        deleteChildDevice(zoneDevice.deviceNetworkId)
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -120,16 +153,27 @@ private sendTelnetCommand(String s) {
 
 private sendTelnetLogin(){
 	trace("sendTelnetLogin: ${passwd}", true)
-	def cmdToSend =  "${passwd}"
-    cmdToSend =  tpiCommands["Login"] + "${passwd}"
+    def cmdToSend = tpiCommands["Login"] + "${passwd}"
     def cmdArray = cmdToSend.toCharArray()
     def cmdSum = 0
     cmdArray.each { cmdSum += (int)it }
     def chkSumStr = DataType.pack(cmdSum, 0x08)
-    if(chkSumStr.length() > 2) chkSumStr = chkSumStr[-2..-1]
+    if(chkSumStr.length() > 2) {
+        chkSumStr = chkSumStr[-2..-1]
+    } 
     cmdToSend += chkSumStr
 	cmdToSend = cmdToSend + "\r\n"
 	sendHubCommand(new hubitat.device.HubAction(cmdToSend, hubitat.device.Protocol.TELNET))
+}
+
+def telnetStatus(String status){
+	traceError("telnetStatus- error: ${status}")
+	if (status != "receive error: Stream is closed"){
+		traceError("Telnet connection dropped...")
+	} else {
+		traceError("Telnet is restarting...")
+	}
+	runOnce(new Date(now() + 10000), telnetConnection)
 }
 
 def parse(String message) {
@@ -288,16 +332,12 @@ private preProcessMessage(message){
 private loginPrompt(){
 	trace("loginPrompt", true)
 	send_Event(name: "DeviceWatch-DeviceStatus", value: "online")
-	trace("Connection to Envisalink established", true)
-	state.reTryCount = 0
 	sendTelnetLogin()
-	trace(LOGINPROMPT, true)
 }
 
 private setUserCodeSend(){
 	trace("setUserCodeSend", true)
 	state.programmingMode = SETUSERCODECOMPLETE
-	trace("COMMAND ACCEPTED", true)
 	pauseExecution(3000)
 	composeKeyStrokes("#")
 }
@@ -362,7 +402,6 @@ private zoneOpen(message, Boolean autoReset = false){
     trace("ZoneOpen ${deviceId}", true);
 	zoneDevice = getZoneDevice("${deviceId}")
 	if (zoneDevice){
-		ifDebug(zoneDevice)
 		if (zoneDevice.capabilities.find { item -> item.name.startsWith('Contact')}) {
             if (zoneDevice.latestValue("contact") != "open") {
                 trace("Contact ${deviceId} Open", true)
@@ -373,21 +412,6 @@ private zoneOpen(message, Boolean autoReset = false){
 			    trace("Motion ${deviceId} Active", true)
 			    zoneDevice.active()
 			    zoneDevice.sendEvent(name: "temperature", value: "", isStateChange: true)
-            }
-		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('CarbonMonoxide')}) {
-            if (zoneDevice.latestValue("carbonMonoxide") == "clear") {
-			    trace("CO Detector ${deviceId} Active", true)
-			    zoneDevice.detected()
-            }
-		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('Smoke')}) {
-            if (zoneDevice.latestValue("smoke") == "clear") {
-			    trace("Smoke Detector ${deviceId} Active", true)
-			    zoneDevice.detected()
-            }
-		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('Shock')}) {
-            if (zoneDevice.latestValue("shock") == "clear") {
-			    trace("GlassBreak Detector ${deviceId} Active", true)
-			    zoneDevice.detected()
             }
 		}
 	}
@@ -411,21 +435,6 @@ private zoneClosed(message){
 			    trace("Motion Inactive", true)
 			    zoneDevice.inactive()
 			    zoneDevice.sendEvent(name: "temperature", value: "", isStateChange: true)
-            }
-		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('CarbonMonoxide')}) {
-            if (zoneDevice.latestValue("carbonMonoxide") != "clear") {
-			    trace("CO Detector ${deviceId} Active", true)
-			    zoneDevice.clear()
-            }
-		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('Smoke')}) {
-            if (zoneDevice.latestValue("smoke") != "clear") {
-			    trace("Smoke Detector ${deviceId} Active", true)
-			    zoneDevice.clear()
-            }
-		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('Shock')}) {
-            if (zoneDevice.latestValue("shock") != "clear") {
-			    trace("GlassBreak Detector ${deviceId} Active", true)
-			    zoneDevice.clear()
             }
 		}
 	}
@@ -489,7 +498,7 @@ private partitionDisarmed(){
     }
 
     if ((state.armState != "disarmed")) {
-		ifDebug("disarming")
+		trace("disarming", false)
 		state.armState = "disarmed"
 		// parent.unlockIt()
 		// parent.switchItDisarmed()

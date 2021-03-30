@@ -24,10 +24,15 @@ def mainPage() {
             input "lightLevel", "number", required: true, title: "Light level (0-99)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
             input "suspendDelay", "number", required: true, title: "Manual suspend delay (seconds)"
+            input "checkSunset", "bool", required: true, title: "Active on sunset only"
             input "debugEnabled", "bool", required: true, title: "Enable debug logging"
         }
 	}
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// System
+/////////////////////////////////////////////////////////////////////////////
 
 def installed() {
 	initialize()
@@ -37,43 +42,47 @@ def updated() {
     initialize()
 }
 
+def rebooted(evt) {
+    initialize(); 
+}
+
 def initialize() {
 	trace("initialize", false);
     unsubscribe();
     unschedule();
     subscribe(motionSwitches, "switch", checkStatus);
     subscribe(motionSensors, "motion", checkStatus);
-    subscribe(light, "switch", lightToggled);
+    subscribe(light, "switch", checkStatus);
+    subscribe(light, "pushed", lightPushed);
     subscribe(location, "systemStart", rebooted);
     state.waitingLightDelay = false;
     state.suspended = false;
-    state.systemAction = false;
     checkStatus();
 }
 
-// Private methods
+/////////////////////////////////////////////////////////////////////////////
+// Private
+/////////////////////////////////////////////////////////////////////////////
 
-def rebooted(evt) {
-    trace("rebooted", false);
-    initialize(); 
-}
-
-def lightToggled(evt) {
-    if (state.systemAction == false ) {
-        // manual user interaction
+def lightPushed(evt) {
+    // manual user interaction
+    if (evt.value == 2) {
+        trace("Suspending automatic action", false)
         state.suspended = true;
         state.suspendTime = now()
-        trace("Suspending automatic action", false)
         runIn(suspendDelay, checkSuspend);        
+    } else {
+        state.suspended = false;
+        trace("Removing suspended state", false)
     }
-    state.systemAction = false;
-    checkStatus();
 }
 
 def checkSuspend(evt) {
-    trace("Suspend removed", false);
-    state.suspended = false;
-    checkStatus();
+    if ( isExpired(state.suspendTime, suspendDelay) ) {
+        trace("Suspend removed", false);
+        state.suspended = false;
+        checkStatus();
+    }
 }
 
 def checkStatus(evt) {
@@ -102,9 +111,8 @@ def checkLight(evt) {
         if ( state.light == "off" ) {
             state.waitingLightDelay = false;
             if ( state.movement == true ) {
-                if (location.getMode() != "Day") {
+                if ( (checkSunset == false ) || (location.getMode() != "Day") ) {
                     trace("Turning on light to ${lightLevel}%", false);
-                    state.systemAction = true;
                     light.setLevel(lightLevel);
                 }
             }
@@ -116,10 +124,8 @@ def checkLight(evt) {
                     state.delayLightTime = now()
                     runIn(lightDelay, checkLight);
                 } else {
-                    def elapsed = now() - state.delayLightTime
-                    if ( elapsed > ( lightDelay * 1000 ) ) {
+                    if ( isExpired(state.delayLightTime, lightDelay) ) {
                         trace("Turning off the light", false);
-                        state.systemAction = true;
                         light.off();
                     }
                 }
@@ -130,7 +136,18 @@ def checkLight(evt) {
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
 // Common
+/////////////////////////////////////////////////////////////////////////////
+
+def isExpired(timestamp, delay) {
+    def elapsed = now() - timestamp
+    if ( elapsed > ( delay * 1000 ) ) {
+        return true;
+    }
+    return false;
+}
+
 def trace(message, debug) {
     if (debug == true) {
         if (debugEnabled == true) { 
@@ -139,4 +156,8 @@ def trace(message, debug) {
     } else {
         log.info message
     }
+}
+
+def traceError(msg){
+	log.error msg
 }
