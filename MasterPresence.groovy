@@ -38,12 +38,15 @@ def mainPage() {
 	}
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// System
+/////////////////////////////////////////////////////////////////////////////
+
 def installed() {
 	initialize()
 }
 
 def updated() {
-    unsubscribe()
     initialize()
 }
 
@@ -54,6 +57,8 @@ def rebooted(evt) {
 
 def initialize() {
 	trace("initialize", false);
+    unsubscribe();
+    unschedule();
     
     // Create master presence device
     masterPresence = getChildDevice("Presence_${app.id}")
@@ -74,7 +79,9 @@ def initialize() {
     checkStatus()
 }
 
-// Private methods
+/////////////////////////////////////////////////////////////////////////////
+// Private
+/////////////////////////////////////////////////////////////////////////////
 
 def checkStatus() {
     trace("checkStatus", true);
@@ -107,8 +114,7 @@ def checkStatus() {
         setMasterState(true)
     } else {
         // how long since last activity
-        def elapsed = now() - state.lastActivity
-        if ( elapsed > ( timeout * 1000 ) ) {
+        if ( isExpired(state.lastActivity, timeout) ) {            
             setMasterState(false)
         }
     }
@@ -132,7 +138,9 @@ def setMasterState(present) {
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
 // Event handlers
+/////////////////////////////////////////////////////////////////////////////
 
 def presenceHandler(evt) {
     trace("presenceHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", true);
@@ -161,7 +169,18 @@ def powerHandler(evt) {
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
 // Common
+/////////////////////////////////////////////////////////////////////////////
+
+def isExpired(timestamp, delay) {
+    def elapsed = now() - timestamp
+    if ( elapsed > ( delay * 1000 ) ) {
+        return true;
+    }
+    return false;
+}
+
 def trace(message, debug) {
     if (debug == true) {
         if (debugEnabled == true) { 
@@ -170,4 +189,8 @@ def trace(message, debug) {
     } else {
         log.info message
     }
+}
+
+def traceError(msg){
+	log.error msg
 }

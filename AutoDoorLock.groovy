@@ -31,25 +31,34 @@ def mainPage() {
 	}
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// System
+/////////////////////////////////////////////////////////////////////////////
+
 def installed() {
-	initialize()
+	initialize();
 }
 
 def updated() {
-    unsubscribe()
-    initialize()
+    initialize();
+}
+
+def rebooted(evt) {
+    // after a reboot, the door lock state might be wrong... explicitly make sure the door is locked
+    trace("rebooted", false);
+    door.lock();
+    initialize(); 
 }
 
 def initialize() {
 	trace("initialize", false);
+    unsubscribe();
+    unschedule();
     subscribe(door, "lock", checkStatus);
-    subscribe(openSensor, "contact.closed", checkStatus);
-    subscribe(openSensor, "contact.open", checkStatus);    
-    subscribe(doorBellButton, "switch.off", checkStatus);
-    subscribe(doorBellButton, "switch.on", checkStatus);
-    subscribe(doorLight, "switch.on", checkStatus);
-    subscribe(doorSuspend, "switch.off", checkStatus);
-    subscribe(doorSuspend, "switch.on", checkStatus);
+    subscribe(openSensor, "contact", checkStatus);    
+    subscribe(doorBellButton, "switch", checkStatus);
+    subscribe(doorLight, "switch", checkStatus);
+    subscribe(doorSuspend, "switch", checkStatus);
     subscribe(location, "systemStart", rebooted);
     state.waitingLockDelay = false;
     state.waitingLightDelay = false;
@@ -58,14 +67,9 @@ def initialize() {
     checkStatus();
 }
 
-// Private methods
-
-// after a reboot, the door lock state might be wrong... explicitly make sure the door is locked
-def rebooted(evt) {
-    trace("rebooted", false);
-    door.lock();
-    initialize(); 
-}
+/////////////////////////////////////////////////////////////////////////////
+// Private
+/////////////////////////////////////////////////////////////////////////////
 
 // Make sure the door is lock... no matter what!
 def safetyCheck(evt) {
@@ -92,8 +96,7 @@ def checkStatus(evt) {
 def checkSuspend() {
     if ( doorSuspend.currentValue("switch") == "on" ) {
         if ( state.suspended == true ) {
-            def elapsed = now() - state.suspendTime
-            if ( elapsed > ( suspendDelay * 1000 ) ) {
+            if ( isExpired(state.suspendTime, suspendDelay) ) {
                 trace("Removing suspend mode", false);
                 doorSuspend.off();
             }
@@ -112,20 +115,21 @@ def checkSuspend() {
 // Lock logic
 def checkLock() {
     if ( door.currentValue("lock") == "locked" ) {
+        // locked
         state.waitingLockDelay = false;
     } else {
+        // unlocked
         if ( openSensor.currentValue("contact") == "open" ) {
+            // opened
             state.waitingLockDelay = false;
-            trace("door is still opened.. waiting for events", true);
         } else {
+            // closed
             if ( state.waitingLockDelay == false ) {
                 state.waitingLockDelay = true;
                 state.delayLockTime = now()
-                trace("Waiting for the delay to lock the door", true)
                 runIn(lockDelay, checkLock);
             } else {
-                def elapsed = now() - state.delayLockTime
-                if ( elapsed > ( lockDelay * 1000 ) ) {
+                if ( isExpired(state.delayLockTime, lockDelay) ) {
                     if ( state.suspended == false ) {
                         trace("Locking the door!", false);
                         door.lock();
@@ -155,8 +159,7 @@ def checkLight() {
                 state.delayLightTime = now()
                 runIn(lightDelay, checkLight);
             } else {
-                def elapsed = now() - state.delayLightTime
-                if ( elapsed > ( lightDelay * 1000 ) ) {
+                if ( isExpired(state.delayLightTime, lightDelay) ) {
                     trace("Turning off the light", false);
                     doorLight.off();
                 }
@@ -167,7 +170,18 @@ def checkLight() {
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
 // Common
+/////////////////////////////////////////////////////////////////////////////
+
+def isExpired(timestamp, delay) {
+    def elapsed = now() - timestamp
+    if ( elapsed > ( delay * 1000 ) ) {
+        return true;
+    }
+    return false;
+}
+
 def trace(message, debug) {
     if (debug == true) {
         if (debugEnabled == true) { 
@@ -176,4 +190,8 @@ def trace(message, debug) {
     } else {
         log.info message
     }
+}
+
+def traceError(msg){
+	log.error msg
 }
