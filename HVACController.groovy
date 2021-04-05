@@ -50,6 +50,7 @@ def initialize() {
     subscribe(sensors, "contact", checkStatus);
     subscribe(location, "systemStart", rebooted);
     state.waitingMode = false;
+    state.previousMode = "unknown";
     checkStatus();
 }
 
@@ -98,10 +99,11 @@ def checkContact() {
             } else if ( state.previousMode == "cool" ) {
                 trace("Restoring HVAC to cool mode", false);
                 thermostat.cool();
-            } else {
+            } else if ( state.previousMode == "auto" ) {
                 trace("Restoring HVAC to auto mode", false);
                 thermostat.auto();
             }
+            state.previousMode = "unknown";
         }
     }
 }
