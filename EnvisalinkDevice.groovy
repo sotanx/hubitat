@@ -5,13 +5,7 @@ def version() {
 }
 
 metadata {
-    definition (
-        name: "Envisalink Connection", 
-        namespace: "Hubitat", 
-        author: "David Hebert", 
-        importUrl: ""
-    ) 
-    {
+    definition (name: "Envisalink Connection", namespace: "Hubitat", author: "David Hebert") {
         capability "Initialize"
 		capability "Telnet"
 

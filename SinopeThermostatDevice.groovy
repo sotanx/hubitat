@@ -5,7 +5,7 @@
 
 metadata {
 
-    definition(name: "Sinope TH112XZB Thermostat", namespace: "kris2k2", author: "Kristopher Lalletti") {
+    definition(name: "Sinope TH112XZB Thermostat", namespace: "hubitat", author: "David Hebert") {
         capability "Initialize"
         capability "Configuration"
         capability "TemperatureMeasurement"
@@ -51,9 +51,9 @@ def initialize() {
     unschedule();
     state.startTimestamp = now();
     state.lastPowerTimestamp = now();
-    state.lastPower = 0;
-    state.energy = 0;
-    state.totalRunTime = 0;
+    state.lastPower = 0.0;
+    state.energy = 0.0;
+    state.totalRunTime = 0.0;
     configure();
     runEvery3Hours(configure)
     powerRefresh();
@@ -84,7 +84,7 @@ def parse(String description) {
 }
 
 private createCustomMap(descMap){
-    def result = null
+    def result = []
     def map = [: ]
 
     if (descMap.cluster == "0201" && descMap.attrId == "0000") {
@@ -119,6 +119,9 @@ private createCustomMap(descMap){
         map.name = "power"
         map.value = getActivePower(descMap.value)
         computeEnergy(map.value);
+        result << createEvent(name: "energy", value:state.energy.setScale(2, BigDecimal.ROUND_HALF_UP))
+        result << createEvent(name: "energyDuration", value:state.energyDuration)
+        result << createEvent(name: "totalHeatingRunTime", value:"${state.totalRunTime.setScale(2, BigDecimal.ROUND_HALF_UP)} minutes")
     }
         
     if (map) {
@@ -128,7 +131,7 @@ private createCustomMap(descMap){
         if ((map.name.toLowerCase().contains("temp")) || (map.name.toLowerCase().contains("setpoint"))) {
             map.scale = state.scale
         }
-        result = createEvent(map)
+        result << createEvent(map)
     }
     return result
 }
@@ -149,8 +152,6 @@ def refresh() {
     cmds += zigbee.readAttribute(0x0204, 0x0000) //Read Temperature Display Mode
     cmds += zigbee.readAttribute(0x0204, 0x0001) //Read Keypad Lockout
     cmds += zigbee.readAttribute(0x0B04, 0x050B) //Read thermostat Active power
-    
-    // Submit zigbee commands
     sendZigbeeCommands(cmds)
 }   
 
@@ -166,8 +167,8 @@ def configure(){
     trace("configure", true);
         
     // Set unused default values
-    sendEvent(name: "coolingSetpoint", value:getTemperature("0BB8")) // 0x0BB8 =  30 Celsius
-    sendEvent(name: "thermostatFanMode", value:"auto") // We dont have a fan, so auto is is
+    sendEvent(name:"coolingSetpoint", value:getTemperature("0BB8")) // 0x0BB8 =  30 Celsius
+    sendEvent(name:"thermostatFanMode", value:"auto") // We dont have a fan, so auto is is
     updateDataValue("lastRunningMode", "heat") // heat is the only compatible mode for this device
 
     // Prepare our zigbee commands
@@ -243,22 +244,16 @@ def emergencyHeat() {
 
 def heat() {
     trace("heat(): mode set", false)
-    
     def cmds = []
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 04, [:], 1000) // MODE
     cmds += zigbee.writeAttribute(0x0201, 0x401C, 0x30, 04, [mfgCode: "0x1185"]) // SETPOINT MODE
-    
-    // Submit zigbee commands
     sendZigbeeCommands(cmds)
 }
 
 def off() {
     trace("off(): mode set", false);
-    
     def cmds = []
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 0)
-    
-    // Submit zigbee commands
     sendZigbeeCommands(cmds)    
 }
 
@@ -267,15 +262,10 @@ def setHeatingSetpoint(preciseDegrees) {
         def temperatureScale = getTemperatureScale()
         def degrees = new BigDecimal(preciseDegrees).setScale(1, BigDecimal.ROUND_HALF_UP)
         def cmds = []        
-        
         trace("setHeatingSetpoint(${degrees}:${temperatureScale})", false)
-        
         def celsius = (temperatureScale == "C") ? degrees as Float : (fahrenheitToCelsius(degrees) as Float).round(2)
         int celsius100 = Math.round(celsius * 100)
-        
         cmds += zigbee.writeAttribute(0x0201, 0x0012, 0x29, celsius100) //Write Heat Setpoint
-
-        // Submit zigbee commands
         sendZigbeeCommands(cmds)         
     } 
 }
@@ -304,12 +294,9 @@ def setThermostatMode(String value) {
 
 def eco() {
     trace("eco()", false)
-    
     def cmds = []
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 04, [:], 1000) // MODE
     cmds += zigbee.writeAttribute(0x0201, 0x401C, 0x30, 05, [mfgCode: "0x1185"]) // SETPOINT MODE    
-    
-    // Submit zigbee commands
     sendZigbeeCommands(cmds)   
 }
 
@@ -329,8 +316,6 @@ def deviceNotification(text) {
         int outdoorTempDevice = outdoorTemp*100
         cmds += zigbee.writeAttribute(0xFF01, 0x0011, 0x21, 10800)   //set the outdoor temperature timeout to 3 hours
         cmds += zigbee.writeAttribute(0xFF01, 0x0010, 0x29, outdoorTempDevice, [mfgCode: "0x119C"]) //set the outdoor temperature as integer
-    
-        // Submit zigbee commands    
         sendZigbeeCommands(cmds)
     } else {
         trace("deviceNotification() : Not setting any outdoor weather, since feature is disabled.", false)
@@ -359,15 +344,11 @@ def computeEnergy(newPower) {
     state.lastPower = newPower;
     def h = ( state.lastPowerTimestamp - lastPowerTimestamp ) / 1000.0 / 3600.0;  
     state.energy += ((state.lastPower + lastPower) / 2.0) * (h);
-    sendEvent(name: "energy", value:state.energy.setScale(2, BigDecimal.ROUND_HALF_UP))
     
     def elapsed = (now() - state.startTimestamp) / 1000.0 / 60.0 / 60.0 / 24.0;
-    def val = "${elapsed.setScale(2, BigDecimal.ROUND_HALF_UP)} Days";
-    sendEvent(name: "energyDuration", value:val)
-
+    state.energyDuration = "${elapsed.setScale(2, BigDecimal.ROUND_HALF_UP)} Days";
     if (newPower > 0) {
         state.totalRunTime += (state.lastPowerTimestamp - lastPowerTimestamp)/1000.0/60.0; 
-        sendEvent(name: "totalHeatingRunTime", value:"${state.totalRunTime.setScale(2, BigDecimal.ROUND_HALF_UP)} minutes")
     }
 }
 
