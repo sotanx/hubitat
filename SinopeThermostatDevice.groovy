@@ -158,6 +158,8 @@ def refresh() {
 def powerRefresh() {
     trace("powerRefresh", true);
     def cmds = []    
+    cmds += zigbee.readAttribute(0x0201, 0x0000) //Read Local Temperature
+    cmds += zigbee.readAttribute(0x0201, 0x0008) //Read PI Heating State  
     cmds += zigbee.readAttribute(0x0B04, 0x050B) //Read thermostat Active power
     sendZigbeeCommands(cmds)
     runIn(30, powerRefresh);
