@@ -47,13 +47,13 @@ def rebooted(evt) {
 }
 
 def uninstalled() {
-    trace("uninstalled", true);
+    trace("uninstalled", "info");
 	unschedule();
 	removeChildDevices(getChildDevices());
 }
 
 def initialize() {
-    trace("initialize", false);
+    trace("initialize", "info");
     unsubscribe()
     unschedule();
 
@@ -61,17 +61,23 @@ def initialize() {
     masterContact = getChildDevice("Contact_${app.id}")
 	if(!masterContact)
     {
-        trace("add device Contact_${app.id}", false);
+        trace("add device Contact_${app.id}", "info");
         addChildDevice("hubitat", "Virtual Contact Sensor", "Contact_${app.id}", null, [label: thisName, name: thisName])
+        masterContact = getChildDevice("Contact_${app.id}")
     }
 
     // Subscribe
     subscribe(location, "systemStart", rebooted)
    
     // Start!
+    state.startTimestamp = now();
+    state.lastPowerTimestamp = now();
+    state.lastPower = 0.0;
+    state.energy = 0.0;
+    state.totalRunTime = 0.0;
     state.active = false;
     state.tick = 0;
-    state.VirtualContact = masterContact.displayName;
+    state.virtualContact = masterContact.displayName;
     checkStatus()
 }
 
@@ -81,8 +87,9 @@ def initialize() {
 
 def checkStatus() {
     // Read status
-    currentPower = powerSensor.currentValue("power")
-    
+    currentPower = powerSensor.currentValue("power");
+    computeEnergy(currentPower);
+
     if ( state.active == true ) {
         // Currently active... waiting for off
         if ( currentPower < powerThreshold ) {
@@ -92,7 +99,7 @@ def checkStatus() {
                 state.active = false;
                 masterContact = getChildDevice("Contact_${app.id}")
                 masterContact.close()
-                trace("Contact closed", false);
+                trace("Contact closed", "info");
             }
         } else {
             state.tick = 0
@@ -106,27 +113,45 @@ def checkStatus() {
                 state.active = true;
                 masterContact = getChildDevice("Contact_${app.id}")
                 masterContact.open()
-                trace("Contact opened", false);
+                trace("Contact opened", "info");
             }
         } else {
             state.tick = 0        
         }
     }
     
-    trace("State = ${state.active}, cycle = ${state.tick}, power = ${currentPower}", true);
+    trace("State = ${state.active}, cycle = ${state.tick}, power = ${currentPower}", "debug");
     runIn(pollRate, checkStatus)
+}
+
+def computeEnergy(newPower) {
+    def lastPowerTimestamp = state.lastPowerTimestamp;
+    def lastPower = state.lastPower;
+    state.lastPowerTimestamp = now();
+    state.lastPower = newPower;
+    def h = ( state.lastPowerTimestamp - lastPowerTimestamp ) / 1000.0 / 3600.0;  
+    state.energy += ((state.lastPower + lastPower) / 2.0) * (h);
+    
+    def elapsed = (now() - state.startTimestamp) / 1000.0 / 60.0 / 60.0 / 24.0;
+    state.energyDuration = "${elapsed.setScale(2, BigDecimal.ROUND_HALF_UP)} Days";
+    if (newPower > 0) {
+        state.totalRunTime += (state.lastPowerTimestamp - lastPowerTimestamp)/1000.0/60.0; 
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
 // Common
 /////////////////////////////////////////////////////////////////////////////
 
-def trace(message, debug) {
-    if (debug == true) {
+def trace(message, level) {
+    def output = "[${thisName}] ${message}";
+    if (level == "debug") {
         if (debugEnabled == true) { 
-            log.debug message
+            log.debug output
         }        
-    } else {
-        log.info message
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
     }
 }

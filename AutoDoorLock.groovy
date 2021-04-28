@@ -45,13 +45,13 @@ def updated() {
 
 def rebooted(evt) {
     // after a reboot, the door lock state might be wrong... explicitly make sure the door is locked
-    trace("rebooted", false);
+    trace("rebooted", "info");
     door.lock();
     initialize(); 
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unsubscribe();
     unschedule();
     subscribe(door, "lock", checkStatus);
@@ -73,11 +73,11 @@ def initialize() {
 
 // Make sure the door is lock... no matter what!
 def safetyCheck(evt) {
-    trace("safetyCheck", true);
+    trace("safetyCheck", "debug");
     if ( doorSuspend.currentValue("switch") == "off" ) {
         if ( openSensor.currentValue("contact") == "closed" ) {
             if ( door.currentValue("lock") == "unlocked" ) {
-                trace("Safety: Locking the door!", false);
+                trace("Safety: Locking the door!", "info");
                 door.lock();
             }
         }
@@ -86,7 +86,7 @@ def safetyCheck(evt) {
 }
 
 def checkStatus(evt) {
-    trace("CheckStatus: Door is ${door.currentValue("lock")} and ${openSensor.currentValue("contact")}. Light is ${doorLight.currentValue("switch")} (Mode ${location.getMode()}) Suspended ${doorSuspend.currentValue("switch")}", true);
+    trace("Door is ${door.currentValue("lock")} and ${openSensor.currentValue("contact")}. Light is ${doorLight.currentValue("switch")} (Mode ${location.getMode()}) Suspended ${doorSuspend.currentValue("switch")}", "debug");
     checkSuspend();
     checkLock();
     checkLight();
@@ -97,14 +97,14 @@ def checkSuspend() {
     if ( doorSuspend.currentValue("switch") == "on" ) {
         if ( state.suspended == true ) {
             if ( isExpired(state.suspendTime, suspendDelay) ) {
-                trace("Removing suspend mode", false);
+                trace("Removing suspend mode", "info");
                 doorSuspend.off();
             }
         } else {
             state.suspended = true;
             door.unlock();
             state.suspendTime = now()
-            trace("Waiting for the delay to remove the suspend", true)
+            trace("Waiting for the delay to remove the suspend", "debug")
             runIn(suspendDelay, checkSuspend);
         }
     } else {
@@ -131,7 +131,7 @@ def checkLock() {
             } else {
                 if ( isExpired(state.delayLockTime, lockDelay) ) {
                     if ( state.suspended == false ) {
-                        trace("Locking the door!", false);
+                        trace("Locking the door!", "info");
                         door.lock();
                     }
                 }
@@ -146,8 +146,8 @@ def checkLight() {
         state.waitingLightDelay = false;
         if ( ( openSensor.currentValue("contact") == "open" ) || ( doorBellButton.currentValue("switch") == "on" ) ) {
             // either the door is open or the button was pressed
-            if (location.getMode() != "Day") {
-                trace("Turning on the light (${location.getMode()})", false);
+            if (isSunset()) {
+                trace("Turning on the light (${location.getMode()})", "info");
                 doorLight.on();
             }
         }
@@ -160,7 +160,7 @@ def checkLight() {
                 runIn(lightDelay, checkLight);
             } else {
                 if ( isExpired(state.delayLightTime, lightDelay) ) {
-                    trace("Turning off the light", false);
+                    trace("Turning off the light", "info");
                     doorLight.off();
                 }
             }
@@ -175,23 +175,30 @@ def checkLight() {
 /////////////////////////////////////////////////////////////////////////////
 
 def isExpired(timestamp, delay) {
-    def elapsed = now() - timestamp
+    def elapsed = now() - timestamp;
     if ( elapsed > ( delay * 1000 ) ) {
         return true;
     }
     return false;
 }
 
-def trace(message, debug) {
-    if (debug == true) {
-        if (debugEnabled == true) { 
-            log.debug message
-        }        
-    } else {
-        log.info message
+def isSunset() {
+    def currTime = new Date();
+    if (currTime > location.sunset || currTime < location.sunrise) {
+        return true;
     }
+    return false;
 }
 
-def traceError(msg){
-	log.error msg
+def trace(message, level) {
+    def output = "[${thisName}] ${message}";
+    if (level == "debug") {
+        if (debugEnabled == true) { 
+            log.debug output
+        }        
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
+    }
 }

@@ -18,7 +18,8 @@ metadata {
         capability "Notification"
         
         command "eco"
-        
+        command "resetPower"
+
         preferences {
             input name: "prefDisplayOutdoorTemp", type: "bool", title: "Enable display of outdoor temperature", defaultValue: true
             input name: "prefDisplayClock", type: "bool", title: "Enable display of clock", defaultValue: true
@@ -49,11 +50,7 @@ def uninstalled() {
 def initialize() {
 	trace("initialize", false);
     unschedule();
-    state.startTimestamp = now();
-    state.lastPowerTimestamp = now();
-    state.lastPower = 0.0;
-    state.energy = 0.0;
-    state.totalRunTime = 0.0;
+    resetPower();
     configure();
     runEvery3Hours(configure)
     powerRefresh();
@@ -300,6 +297,14 @@ def eco() {
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 04, [:], 1000) // MODE
     cmds += zigbee.writeAttribute(0x0201, 0x401C, 0x30, 05, [mfgCode: "0x1185"]) // SETPOINT MODE    
     sendZigbeeCommands(cmds)   
+}
+
+def resetPower() {
+    state.startTimestamp = now();
+    state.lastPowerTimestamp = now();
+    state.lastPower = 0.0;
+    state.energy = 0.0;
+    state.totalRunTime = 0.0;
 }
 
 def deviceNotification(text) {

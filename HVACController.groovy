@@ -44,7 +44,7 @@ def rebooted(evt) {
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unsubscribe();
     unschedule();
     subscribe(sensors, "contact", checkStatus);
@@ -68,7 +68,7 @@ def checkStatus(evt) {
         }
     }    
 
-    trace("CheckStatus: Mode ${state.mode}. Contact sensors opened ${state.contact}", true);
+    trace("Mode ${state.mode}. Contact sensors opened ${state.contact}", "debug");
     checkContact();
 }
 
@@ -78,12 +78,12 @@ def checkContact() {
         if ( state.mode != "off") {
             if (state.waitingMode == true) {
                 if ( isExpired(state.waitingModeTime, modeDelay) ) {
-                    trace("Turning off the HVAC (current: ${state.mode})", false);
+                    trace("Turning off the HVAC (current: ${state.mode})", "info");
                     state.previousMode = state.mode;
                     thermostat.off();
                 }
             } else {
-                trace("Waiting before turning off the system...", true);
+                trace("Waiting before turning off the system...", "debug");
                 state.waitingMode = true;
                 state.waitingModeTime = now()
                 runIn(modeDelay, checkStatus);        
@@ -94,13 +94,13 @@ def checkContact() {
         state.waitingMode = false;
         if ( state.mode == "off") {
             if ( state.previousMode == "heat" ) {
-                trace("Restoring HVAC to heat mode", false);
+                trace("Restoring HVAC to heat mode", "info");
                 thermostat.heat();
             } else if ( state.previousMode == "cool" ) {
-                trace("Restoring HVAC to cool mode", false);
+                trace("Restoring HVAC to cool mode", "info");
                 thermostat.cool();
             } else if ( state.previousMode == "auto" ) {
-                trace("Restoring HVAC to auto mode", false);
+                trace("Restoring HVAC to auto mode", "info");
                 thermostat.auto();
             }
             state.previousMode = "unknown";
@@ -120,16 +120,15 @@ def isExpired(timestamp, delay) {
     return false;
 }
 
-def trace(message, debug) {
-    if (debug == true) {
+def trace(message, level) {
+    def output = "[${thisName}] ${message}";
+    if (level == "debug") {
         if (debugEnabled == true) { 
-            log.debug message
+            log.debug output
         }        
-    } else {
-        log.info message
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
     }
-}
-
-def traceError(msg){
-	log.error msg
 }

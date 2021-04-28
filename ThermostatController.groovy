@@ -50,7 +50,7 @@ def rebooted(evt) {
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unsubscribe();
     unschedule();
     subscribe(contactSensors, "contact", checkStatus);
@@ -58,8 +58,10 @@ def initialize() {
     subscribe(motionSwitches, "switch", checkStatus);
     subscribe(thermostat, "thermostat", checkStatus);
     subscribe(location, "systemStart", rebooted);
+    subscribe(location, "mode", checkStatus)
     state.lastMotion = now();
-    state.motionEcoMode = false;
+    state.ecoMode = false;
+    state.vacationMode = false;
     state.normalTemperature = 19.0;
     checkTemperature();
 }
@@ -74,8 +76,10 @@ def checkTemperature() {
 }
 
 def checkStatus(evt) {
+    // Gather all states
     state.mode = thermostat.currentValue("thermostatMode");
     state.temperature = thermostat.currentValue("temperature");
+    state.currentHeatingpoint = thermostat.currentValue("heatingSetpoint");
     state.contact = false;
     state.motion = false;
     state.cooling = false;
@@ -113,35 +117,66 @@ def checkStatus(evt) {
         }
     }         
 
-    trace("CheckStatus: Thermostat is ${state.mode}, Contact is ${state.contact}, Motion is ${state.motion}, Temperature is ${state.temperature}, Cooling is ${state.cooling}", true);
+    trace("Thermostat ${state.mode}, Contact ${state.contact}, Motion ${state.motion}, Temperature ${state.temperature}, Cooling ${state.cooling}, EcoMode ${state.ecoMode}, VacationMode ${state.vacationMode}", "debug");
 
-    handleMotion();
-    handleContact();
-    handleCooling();
-}
-
-def handleMotion() {
-    def currentHeatingpoint = thermostat.currentValue("heatingSetpoint");
-    if (state.motion == true) {
-        state.lastMotion = now();
-        if ( state.motionEcoMode == true ) {
-            trace("Restoring temperature to normal", false);
-            state.motionEcoMode = false;
-            if (currentHeatingpoint < state.normalTemperature) {
-                setTemperature(state.normalTemperature);
+    // Exe state machine
+    if ( location.getMode() == "Vacation" ) {
+        if ( state.vacationMode == false ) {
+            state.vacationMode = true;
+            setEcoMode();
+            // turn off fans
+            coolingDevices.each { device ->
+                device.off();
             }
         }
     } else {
-        // no motion timeout?
-        if ( isExpired(state.lastMotion, motionTimeout) == true && state.motionEcoMode == false) {
-            trace("Lowering temperature", false);
-            state.motionEcoMode = true;
-            state.normalTemperature = currentHeatingpoint;
-            def newTemp = state.normalTemperature - deltaEcoTemperature;
-            if (currentHeatingpoint > newTemp) {
-                setTemperature(newTemp);
-            }
+        // normal operation
+        if (state.vacationMode == true) {
+            // Exiting vacation mode. Fake motion so that system will go back to normal
+            state.vacationMode = false;
+            state.motion = true;
         }
+        handleMotion();
+        handleContact();
+        handleCooling();
+    }
+}
+
+def handleMotion() {
+    if (state.motion == true) {
+        state.lastMotion = now();
+        if ( state.ecoMode == true ) {
+            setNormalMode();
+        }
+    } else {
+        // no motion timeout?
+        if ( isExpired(state.lastMotion, motionTimeout) == true && state.ecoMode == false ) {
+            setEcoMode();
+        }
+    }
+}
+
+def setEcoMode() {
+    if (state.ecoMode == false) {
+        state.ecoMode = true;
+        state.normalTemperature = state.currentHeatingpoint;
+    }
+    def newTemp = state.normalTemperature - deltaEcoTemperature;
+    if ( location.getMode() == 'Night' ) {
+        // don't lower it that much during the night
+        newTemp = state.normalTemperature - (deltaEcoTemperature / 2);
+    }
+    if (state.currentHeatingpoint > newTemp) {
+        trace("Setting eco mode...", "info");
+        setTemperature(newTemp);
+    }
+}
+
+def setNormalMode() {
+    state.ecoMode = false;
+    if (state.currentHeatingpoint < state.normalTemperature) {
+        trace("Restoring temperature to normal", "info");
+        setTemperature(state.normalTemperature);
     }
 }
 
@@ -152,7 +187,7 @@ def setTemperature(newTemp) {
     if (newTemp < minTemperature) {
         newTemp = minTemperature;
     }
-    trace("Setting temperature to ${newTemp}", false);
+    trace("Setting temperature to ${newTemp}", "info");
     thermostat.setHeatingSetpoint(newTemp);
 }
 
@@ -160,13 +195,13 @@ def handleContact() {
     if (state.contact == true) {
         // windows/door are opened
         if (state.mode == "heat") {
-            trace("Turning off the thermostat", false);
+            trace("Turning off the thermostat", "info");
             thermostat.off();
         }
     } else {
         // windows/door are closed
         if (state.mode != "heat") {
-            trace("Turning on the thermostat", false);
+            trace("Turning on the thermostat", "info");
             thermostat.heat();
         }
     }
@@ -174,12 +209,12 @@ def handleContact() {
 
 def handleCooling() {
     if (state.temperature > coolingPoint && state.cooling == false) {
-        trace("Turning on the fans", true);
+        trace("Turning on the fans", "info");
         coolingDevices.each { device ->
             device.on();
         }  
     } else if ((state.temperature + 2) < coolingPoint && state.cooling == true) {
-        trace("Turning off the fans", true);
+        trace("Turning off the fans", "info");
         coolingDevices.each { device ->
             device.off();
         }  
@@ -198,16 +233,15 @@ def isExpired(timestamp, delay) {
     return false;
 }
 
-def trace(message, debug) {
-    if (debug == true) {
+def trace(message, level) {
+    def output = "[${thisName}] ${message}";
+    if (level == "debug") {
         if (debugEnabled == true) { 
-            log.debug message
+            log.debug output
         }        
-    } else {
-        log.info message
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
     }
-}
-
-def traceError(msg){
-	log.error msg
 }

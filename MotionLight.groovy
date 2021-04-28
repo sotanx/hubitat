@@ -21,6 +21,7 @@ def mainPage() {
             input "light", "capability.switch", required: true, title: "Light switch"
             input "motionSensors", "capability.motionSensor", multiple: true, title: "Motion sensors"
             input "motionSwitches", "capability.switch", multiple: true, title: "Motion sensors (virtual switch)"
+            input "presenceSensors", "capability.contactSensor", multiple: true, title: "Presence sensors"
             input "lightLevel", "number", required: true, title: "Light level (0-99)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
             input "suspendDelay", "number", required: true, title: "Manual suspend delay (seconds)"
@@ -47,11 +48,12 @@ def rebooted(evt) {
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unsubscribe();
     unschedule();
     subscribe(motionSwitches, "switch", checkStatus);
     subscribe(motionSensors, "motion", checkStatus);
+    subscribe(presenceSensors, "contact", checkStatus);
     subscribe(light, "switch", checkStatus);
     subscribe(light, "pushed", lightPushed);
     subscribe(location, "systemStart", rebooted);
@@ -67,19 +69,19 @@ def initialize() {
 def lightPushed(evt) {
     // manual user interaction
     if (evt.value == 2) {
-        trace("Suspending automatic action", false)
+        trace("Suspending automatic action", "info")
         state.suspended = true;
         state.suspendTime = now()
         runIn(suspendDelay, checkSuspend);        
     } else {
         state.suspended = false;
-        trace("Removing suspended state", false)
+        trace("Removing suspended state", "info")
     }
 }
 
 def checkSuspend(evt) {
     if ( isExpired(state.suspendTime, suspendDelay) ) {
-        trace("Suspend removed", false);
+        trace("Suspend removed", "info");
         state.suspended = false;
         checkStatus();
     }
@@ -92,6 +94,13 @@ def checkStatus(evt) {
 def checkLight(evt) {
     state.light = light.currentValue("switch");
     state.movement = false;
+    state.present = false;
+
+    presenceSensors.each { device ->
+        if ( device.currentValue("contact") == "open" ) {
+            state.present = true;
+        }
+    }    
     
     motionSensors.each { device ->
         if ( device.currentValue("motion") == "active" ) {
@@ -105,14 +114,14 @@ def checkLight(evt) {
         }
     }    
 
-    trace("CheckStatus: light is ${state.light} and movement is ${state.movement} Suspended ${state.suspended} (Mode ${location.getMode()})", true);
+    trace("Light ${state.light} Movement ${state.movement} Suspended ${state.suspended} Present ${state.present}", "debug");
 
     if (state.suspended == false) {
         if ( state.light == "off" ) {
             state.waitingLightDelay = false;
             if ( state.movement == true ) {
-                if ( (checkSunset == false ) || (location.getMode() != "Day") ) {
-                    trace("Turning on light to ${lightLevel}%", false);
+                if ( checkSunset == false || isSunset() == true ) {
+                    trace("Turning on light to ${lightLevel}%", "info");
                     light.setLevel(lightLevel);
                 }
             }
@@ -125,8 +134,10 @@ def checkLight(evt) {
                     runIn(lightDelay, checkLight);
                 } else {
                     if ( isExpired(state.delayLightTime, lightDelay) ) {
-                        trace("Turning off the light", false);
-                        light.off();
+                        if ( state.present == false ) {
+                            trace("Turning off the light", "info");
+                            light.off();
+                        }
                     }
                 }
             } else {
@@ -141,23 +152,30 @@ def checkLight(evt) {
 /////////////////////////////////////////////////////////////////////////////
 
 def isExpired(timestamp, delay) {
-    def elapsed = now() - timestamp
+    def elapsed = now() - timestamp;
     if ( elapsed > ( delay * 1000 ) ) {
         return true;
     }
     return false;
 }
 
-def trace(message, debug) {
-    if (debug == true) {
-        if (debugEnabled == true) { 
-            log.debug message
-        }        
-    } else {
-        log.info message
+def isSunset() {
+    def currTime = new Date();
+    if (currTime > location.sunset || currTime < location.sunrise) {
+        return true;
     }
+    return false;
 }
 
-def traceError(msg){
-	log.error msg
+def trace(message, level) {
+    def output = "[${thisName}] ${message}";
+    if (level == "debug") {
+        if (debugEnabled == true) { 
+            log.debug output
+        }        
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
+    }
 }
