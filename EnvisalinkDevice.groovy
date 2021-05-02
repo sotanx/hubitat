@@ -30,7 +30,7 @@ metadata {
         input("ip", "text", title: "IP Address",  required: true)
         input("passwd", "text", title: "Password", required: true)
         input("masterCode", "text", title: "Master Code", required: true)
-        input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+        input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
     }
 }
 
@@ -39,28 +39,25 @@ metadata {
 /////////////////////////////////////////////////////////////////////////////
 
 def installed() {
-	trace("installed", true);
     initialize()
 }
 
 def updated() {
-    trace("updated", true);
     initialize()
 }
 
 def uninstalled() {
-    trace("uninstalled", true);
+    trace("uninstalled", "info");
 	unschedule();
     telnetClose();
 	removeChildDevices(getChildDevices());
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unschedule();
 	state.programmingMode = "";
     runEvery5Minutes(poll);
-    trace("Poll Rate set at 5 minutes", true);
     runIn(5, "telnetConnection");
 }
 
@@ -69,12 +66,12 @@ def initialize() {
 /////////////////////////////////////////////////////////////////////////////
 
 def statusReport() {
-	trace("StatusReport", true);
+	trace("StatusReport", "debug");
 	sendTelnetCommand(tpiCommands["StatusReport"])
 }
 
 def poll() {
-	trace("Polling...", true)
+	trace("Polling...", "debug")
     sendTelnetCommand(tpiCommands["Poll"])
 }
 
@@ -97,23 +94,23 @@ def createZone(zoneId, name, type) {
     deleteZone(zoneId);
 	
     if ( (zoneId < 0) || (zoneId > 64) ) {
-        traceError "zone id out of range ${zoneId}";
+        trace("zone id out of range ${zoneId}", "error");
         return;
     }
     
     switch( type ) {
         case "contact":
     		addChildDevice("hubitat", "Virtual Contact Sensor", "${device.deviceNetworkId}_C_${zoneId}", [name: "Contact sensor", isComponent: true, label: name]);
-            trace("Contact sensor assigned ${device.deviceNetworkId}_C_${zoneId}", false);
+            trace("Contact sensor assigned ${device.deviceNetworkId}_C_${zoneId}", "info");
             break;
 	    case "motion":
 		    addChildDevice("hubitat", "Virtual Motion Sensor", "${device.deviceNetworkId}_M_${zoneId}", [name: "Motion sensor", isComponent: true, label: name]);
 		    def newDevice = getChildDevice("${device.deviceNetworkId}_M_${zoneId}");
 			newDevice.updateSetting("autoInactive",[type:"enum", value:disabled]);
-            trace("Motion sensor Sensor assigned ${device.deviceNetworkId}_M_${zoneId}", false);
+            trace("Motion sensor Sensor assigned ${device.deviceNetworkId}_M_${zoneId}", "info");
             break;
         default:
-            traceError("unknown device type ${type}");
+            trace("unknown device type ${type}", "error");
             break;
 	}
 }
@@ -130,13 +127,13 @@ def deleteZone(zoneId) {
 /////////////////////////////////////////////////////////////////////////////
 
 def telnetConnection(){
-	trace("telnetConnection", true)
+	trace("telnetConnection", "debug")
     telnetClose()
 	pauseExecution(5000)
 	try {
 		telnetConnect([termChars:[13,10]], ip, 4025, null, null)
 	} catch(e) {
-		trace("telnetConnection: ${e.message}", false)
+		trace("telnetConnection: ${e.message}", "error")
 	}
 }
 
@@ -146,7 +143,7 @@ private sendTelnetCommand(String s) {
 }
 
 private sendTelnetLogin(){
-	trace("sendTelnetLogin: ${passwd}", true)
+	trace("sendTelnetLogin: ${passwd}", "debug")
     def cmdToSend = tpiCommands["Login"] + "${passwd}"
     def cmdArray = cmdToSend.toCharArray()
     def cmdSum = 0
@@ -161,11 +158,11 @@ private sendTelnetLogin(){
 }
 
 def telnetStatus(String status){
-	traceError("telnetStatus- error: ${status}")
+	trace("telnetStatus- error: ${status}", "error")
 	if (status != "receive error: Stream is closed"){
-		traceError("Telnet connection dropped...")
+		trace("Telnet connection dropped...", "error")
 	} else {
-		traceError("Telnet is restarting...")
+		trace("Telnet is restarting...", "error")
 	}
 	runOnce(new Date(now() + 10000), telnetConnection)
 }
@@ -181,14 +178,14 @@ def parse(String message) {
                     loginPrompt();
                     break;
                 case PASSWORDINCORRECT:
-                    traceError(PASSWORDINCORRECT);
+                    trace(PASSWORDINCORRECT, "error");
                     break;
                 case LOGINSUCCESSFUL:
-                    trace(LOGINSUCCESSFUL, false);
+                    trace(LOGINSUCCESSFUL, "info");
                     statusReport();
                     break;
                 case LOGINTIMEOUT:
-                    traceError(LOGINTIMEOUT);
+                    trace(LOGINTIMEOUT, "error");
                     break;
             }
             break;
@@ -232,7 +229,7 @@ def parse(String message) {
         case PARTITIONREADY:
         case PARTITIONNOTREADY:
             def id = message.substring(3, 4) as int;
-            trace("${messageId} ${id}", true);
+            trace("${messageId} ${id}", "debug");
             break;
 
         case PARTITIONARMEDSTATE:
@@ -253,7 +250,7 @@ def parse(String message) {
             break;
 
         default:
-            trace("Parsing unknown incoming message: [" + message + "] => ${messageId}\n\n", true);
+            trace("Parsing unknown incoming message: [" + message + "] => ${messageId}\n\n", "debug");
             break;
     }
 
@@ -324,26 +321,26 @@ private preProcessMessage(message){
 }
 
 private loginPrompt(){
-	trace("loginPrompt", true)
+	trace("loginPrompt", "debug")
 	send_Event(name: "DeviceWatch-DeviceStatus", value: "online")
 	sendTelnetLogin()
 }
 
 private setUserCodeSend(){
-	trace("setUserCodeSend", true)
+	trace("setUserCodeSend", "debug")
 	state.programmingMode = SETUSERCODECOMPLETE
 	pauseExecution(3000)
 	composeKeyStrokes("#")
 }
 
 private setUserCodeComplete(){
-	trace("setUserCodeSend", true)
+	trace("setUserCodeSend", "debug")
 	state.programmingMode = ""
 	def storedCodes = new groovy.json.JsonSlurper().parseText(device.currentValue("Codes"))
 	assert storedCodes instanceof Map
 	def newCodeMap = [name: (state.newName), code: (state.newCode.toString())]
 	storedCodes.put((state.newCodePosition.toString()), (newCodeMap))
-	trace("storedCodes: ${storedCodes}", true)
+	trace("storedCodes: ${storedCodes}", "debug")
 	def json = new groovy.json.JsonBuilder(storedCodes)
 	send_Event(name:"Codes", value: json, displayed:true, isStateChange: true)
 	state.newCode = ""
@@ -352,26 +349,26 @@ private setUserCodeComplete(){
 }
 
 private composeKeyStrokes(data){
-	trace("composeKeyStrokes: ${data}", true)
+	trace("composeKeyStrokes: ${data}", "debug")
     sendMessage = tpiCommands["SendKeyStroke"]
 	sendProgrammingMessage(sendMessage + data)
 }
 
 private deleteUserCodeSend(){
-	trace("deleteUserCodeSend", true)
+	trace("deleteUserCodeSend", "debug")
 	state.programmingMode = DELETEUSERCOMPLETE
 	pauseExecution(3000)
 	composeKeyStrokes("#")
 }
 
 private deleteUserCodeComplete(){
-	trace("deleteUserCodeComplete", true)
+	trace("deleteUserCodeComplete", "debug")
 	state.programmingMode = ""
 	def storedCodes = new groovy.json.JsonSlurper().parseText(device.currentValue("Codes"))
 	assert storedCodes instanceof Map
-	trace("storedCodes: ${storedCodes}", true)
+	trace("storedCodes: ${storedCodes}", "debug")
 	def selectedCode = storedCodes[state.newCodePosition]
-	trace("Selected Code: ${selectedCode}", true)
+	trace("Selected Code: ${selectedCode}", "debug")
 	storedCodes.remove(state.newCodePosition.toString())
 	def json = new groovy.json.JsonBuilder(storedCodes)
 	send_Event(name:"Codes", value: json, displayed:true, isStateChange: true)
@@ -383,7 +380,7 @@ private deleteUserCodeComplete(){
 private systemError(message){
 	def substringCount = message.size() - 3
 	message = message.substring(4,message.size()).replaceAll('0', '') as int
-	traceError("System Error: ${message} - ${errorCodes[(message)]}")
+	trace("System Error: ${message} - ${errorCodes[(message)]}", "error")
 	if (errorCodes[(message)] == "Receive Buffer Overrun"){
 		composeKeyStrokes("#")
 	}
@@ -393,17 +390,17 @@ private zoneOpen(message, Boolean autoReset = false){
 	def zoneDevice
 	def deviceId = message.substring(3,6) as int;
     def myStatus
-    trace("ZoneOpen ${deviceId}", true);
+    trace("ZoneOpen ${deviceId}", "debug");
 	zoneDevice = getZoneDevice("${deviceId}")
 	if (zoneDevice){
 		if (zoneDevice.capabilities.find { item -> item.name.startsWith('Contact')}) {
             if (zoneDevice.latestValue("contact") != "open") {
-                trace("Contact ${deviceId} Open", true)
+                trace("Contact ${deviceId} Open", "debug")
 			    zoneDevice.open()
             }
 		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('Motion')}) {
             if (zoneDevice.latestValue("motion") != "active") {
-			    trace("Motion ${deviceId} Active", true)
+			    trace("Motion ${deviceId} Active", "debug")
 			    zoneDevice.active()
 			    zoneDevice.sendEvent(name: "temperature", value: "", isStateChange: true)
             }
@@ -415,18 +412,18 @@ private zoneClosed(message){
 	def zoneDevice
 	def deviceId = message.substring(3,6) as int;
     def myStatus
-	trace("ZoneClosed ${deviceId}", true);
+	trace("ZoneClosed ${deviceId}", "debug");
     zoneDevice = getZoneDevice("${deviceId}")
 	if (zoneDevice){
-		trace(zoneDevice, true)
+		trace(zoneDevice, "debug")
 		if (zoneDevice.capabilities.find { item -> item.name.startsWith('Contact')}){
             if (zoneDevice.latestValue("contact") != "closed") {
-			    trace("Contact Closed", true)
+			    trace("Contact Closed", "debug")
 			    zoneDevice.close()
             }
 		} else if (zoneDevice.capabilities.find { item -> item.name.startsWith('Motion')}) {
             if (zoneDevice.latestValue("motion") != "inactive") {
-			    trace("Motion Inactive", true)
+			    trace("Motion Inactive", "debug")
 			    zoneDevice.inactive()
 			    zoneDevice.sendEvent(name: "temperature", value: "", isStateChange: true)
             }
@@ -435,7 +432,7 @@ private zoneClosed(message){
 }
 
 private partitionReadyForForcedArmEnabled(){
-	trace("partitionReadyForForcedArmEnabled", true);
+	trace("partitionReadyForForcedArmEnabled", "debug");
 	if (device.currentValue("Status") != PARTITIONNOTREADYFORCEARMINGENABLED) { 
         send_Event(name:"Status", value: PARTITIONNOTREADYFORCEARMINGENABLED, isStateChange: true) 
     }
@@ -457,7 +454,7 @@ private partitionArmed(isAway){
 
     if ( isAway == true ) {
 	    if (state.armState != "armed_away"){
-    		trace("Armed Away", false)
+    		trace("Armed Away", "info")
 		    state.armState = "armed_away"
             // if (location.hsmStatus != "armedAway") {
             //	sendLocationEvent(name: "hsmSetArm", value: "armAway"); ifDebug("sendLocationEvent(name:\"hsmSetArm\", value:\"armAway\")")
@@ -465,7 +462,7 @@ private partitionArmed(isAway){
         }
     } else {
 	    if (state.armState != "armed_home"){
-		    trace("Armed Home", false)
+		    trace("Armed Home", "info")
 		    state.armState = "armed_home"
             // if (location.hsmStatus != "armedHome") {
                 //log.info "systemArmedHome() hsmStatus=$location.hsmStatus  setting hsmSetArm=armHome"
@@ -480,7 +477,7 @@ private partitionArmed(isAway){
 }
 
 private partitionDisarmed(){
-	trace("partitionDisarmed", false);
+	trace("partitionDisarmed", "info");
     if ((device.currentValue("Status") != PARTITIONDISARMED) && (state.armState != "disarmed")) { 
         send_Event(name:"Status", value: PARTITIONDISARMED, isStateChange: true) 
     }
@@ -492,7 +489,7 @@ private partitionDisarmed(){
     }
 
     if ((state.armState != "disarmed")) {
-		trace("disarming", false)
+		trace("disarming", "info")
 		state.armState = "disarmed"
 		// parent.unlockIt()
 		// parent.switchItDisarmed()
@@ -506,26 +503,26 @@ private partitionDisarmed(){
 private keypadLedState(ledState){
 	def ledBinary = Integer.toBinaryString(hubitat.helper.HexUtils.hexStringToInt(ledState))
 	def paddedBinary = ledBinary.padLeft(8, "0");
-	trace("keypadLedState ${paddedBinary}", true)
+	trace("keypadLedState ${paddedBinary}", "debug")
     
     if (ledState == "82" && state.programmingMode == SETUSERCODEINITIALIZE){
-		trace("${KEYPADLEDSTATE} ${state.programmingMode}", true);
+		trace("${KEYPADLEDSTATE} ${state.programmingMode}", "debug");
 		state.programmingMode = SETUSERCODESEND;
 		composeKeyStrokes(state.newCodePosition + state.newCode);
 	}
 
 	if (ledState == "82" && state.programmingMode == DELETEUSERCODEINITIALIZE){
-		trace("${KEYPADLEDSTATE} ${state.programmingMode}", true);
+		trace("${KEYPADLEDSTATE} ${state.programmingMode}", "debug");
 		state.programmingMode = DELETEUSERCODE;
 		composeKeyStrokes(state.newCodePosition + "*");
 	}
 
 	if (paddedBinary.substring(7,8) == "0"){
-		trace("Partition Ready LED Off", true);
+		trace("Partition Ready LED Off", "debug");
 	}
 
 	if (paddedBinary.substring(7,8) == "1"){
-		trace("Partition Ready LED On", true);
+		trace("Partition Ready LED On", "debug");
 	}
 }
 
@@ -552,7 +549,7 @@ private getZoneDevice(zoneId) {
 }
 
 private send_Event(evnt) {
-	trace("sendEvent(${evnt})", true)
+	trace("sendEvent(${evnt})", "debug")
 	sendEvent(evnt)
 }
 
@@ -576,17 +573,16 @@ private generateChksum(String cmdToSend){
 	cmdToSend
 }
 
-private traceError(msg){
-	log.error msg
-}
-
-def trace(message, debug) {
-    if (debug == true) {
+def trace(message, level) {
+    def output = "[${device.getLabel()}] ${message}";
+    if (level == "debug") {
         if (debugEnabled == true) { 
-            log.debug message
+            log.debug output
         }        
-    } else {
-        log.info message
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
     }
 }
 

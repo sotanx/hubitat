@@ -22,7 +22,7 @@ def mainPage() {
             input "sensors", "capability.contactSensor", multiple: true, title: "Contact sensors"
             input "suspendDelay", "number", required: true, title: "Manual suspend delay (seconds)"
             input "checkSunset", "bool", required: true, title: "Active on sunset only"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
 	}
 }

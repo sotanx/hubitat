@@ -28,7 +28,7 @@ def mainPage() {
             input "maxTemperature", "number", required: true, title: "Max temperature that can be set"
             input "minTemperature", "number", required: true, title: "Min temperature that can be set"
             input "deltaEcoTemperature", "number", required: true, title: "delta temp when eco mode"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
 	}
 }

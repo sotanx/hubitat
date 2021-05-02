@@ -21,7 +21,7 @@ def mainPage() {
             input "pollRate", "number", required: true, title: "Poll rate (seconds)"
             input "timeout", "number", required: true, title: "Away after X seconds of inactivity"
             input "powerThreshold", "number", required: true, title: "min power to declare active"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
         section {        
 			input "presenceSensors", "capability.presenceSensor", title: "Select Presence Sensors", submitOnChange: true, required: false, multiple: true
@@ -51,12 +51,11 @@ def updated() {
 }
 
 def rebooted(evt) {
-    trace("rebooted", false);
     initialize(); 
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unsubscribe();
     unschedule();
     
@@ -84,7 +83,7 @@ def initialize() {
 /////////////////////////////////////////////////////////////////////////////
 
 def checkStatus() {
-    trace("checkStatus", true);
+    trace("checkStatus", "debug");
     
     def presenceDetected = false
 
@@ -127,12 +126,12 @@ def setMasterState(present) {
     if ( present == true ) {
         state.lastActivity = now()
         if ( device.currentValue("presence") != "present" ) {
-            trace("set to arrived", false);
+            trace("set to arrived", "info");
             device.arrived()
         }
     } else {
         if ( device.currentValue("presence") != "not present" ) {
-            trace("set to departed", false);
+            trace("set to departed", "info");
             device.departed()
         }
     }
@@ -143,27 +142,27 @@ def setMasterState(present) {
 /////////////////////////////////////////////////////////////////////////////
 
 def presenceHandler(evt) {
-    trace("presenceHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", true);
+    trace("presenceHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", "debug");
     if ( evt.value == "present" ) {
         setMasterState(true)
     }
 }
 
 def motionHandler(evt) {
-    trace("motionHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", true);
+    trace("motionHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", "debug");
     if ( evt.value == "active" ) {
         setMasterState(true)
     }
 }
 
 def contactHandler(evt) {
-    trace("contactHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", true);
+    trace("contactHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", "debug");
     // For a contact, anything == presence
     setMasterState(true)
 }
 
 def powerHandler(evt) {
-    trace("powerHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", true);
+    trace("powerHandler ${evt.value} on ${evt.displayName} (${evt.deviceId})", "debug");
     if ( evt.floatValue > powerThreshold ) {
         setMasterState(true)
     }
@@ -181,16 +180,15 @@ def isExpired(timestamp, delay) {
     return false;
 }
 
-def trace(message, debug) {
-    if (debug == true) {
+def trace(message, level) {
+    def output = "[${thisName}] ${message}";
+    if (level == "debug") {
         if (debugEnabled == true) { 
-            log.debug message
+            log.debug output
         }        
-    } else {
-        log.info message
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
     }
-}
-
-def traceError(msg){
-	log.error msg
 }

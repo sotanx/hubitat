@@ -20,9 +20,12 @@ def mainPage() {
         section("Setup") {
             input "thermostat", "capability.thermostat", required: true, title: "Thermostat"
             input "sensors", "capability.contactSensor", required: false, multiple: true, title: "Door/window sensors"
+            input "weather", "capability.sensor", required: false, title: "Weather forecast device" 
+            input "weatherThreshold", "number", required: true, title: "Forecast threshold temperature", defaultValue: 12
+            input "minTemp", "number", required: true, title: "Temperature threshold to switch to mode", defaultValue: 18
             input "modeDelay", "number", required: true, title: "Set mode delay"
             input "awayDelay", "number", required: true, title: "Set away delay"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
 	}
 }
@@ -52,11 +55,40 @@ def initialize() {
     state.waitingMode = false;
     state.previousMode = "unknown";
     checkStatus();
+    checkForecast();
+    runEvery3Hours(checkForecast);
 }
 
 /////////////////////////////////////////////////////////////////////////////
 // Private
 /////////////////////////////////////////////////////////////////////////////
+
+def checkForecast() {
+    if ( weather != null ) {
+        state.mode = thermostat.currentValue("thermostatMode");
+        state.temperature = thermostat.currentValue("temperature");
+        state.forecast = weather.currentValue("forecastHigh");
+        if ( state.mode != "off" ) {
+            // only change if the system isn't currently turned off
+            if ( state.forecast >= weatherThreshold ) {
+                if (state.mode != "cool") {
+                    // house must be warm enough already
+                    if (state.temperature > minTemp ) {
+                        trace("Setting HVAC to cool mode (forecast)", "info");
+                        thermostat.cool();
+                    }
+                }
+            } else {
+                if (state.mode != "heat") {
+                    if (state.temperature < minTemp ) {
+                        trace("Setting HVAC to heat mode (forecast)", "info");
+                        thermostat.heat();
+                    }
+                }
+            }
+        }
+    }
+}
 
 def checkStatus(evt) {
     state.mode = thermostat.currentValue("thermostatMode");

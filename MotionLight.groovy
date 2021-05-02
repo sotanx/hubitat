@@ -26,7 +26,7 @@ def mainPage() {
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
             input "suspendDelay", "number", required: true, title: "Manual suspend delay (seconds)"
             input "checkSunset", "bool", required: true, title: "Active on sunset only"
-            input "debugEnabled", "bool", required: true, title: "Enable debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
 	}
 }

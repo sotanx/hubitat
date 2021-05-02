@@ -25,7 +25,8 @@ metadata {
             input name: "prefDisplayClock", type: "bool", title: "Enable display of clock", defaultValue: true
             input name: "prefDisplayBacklight", type: "bool", title: "Enable display backlight", defaultValue: true
             input name: "prefKeyLock", type: "bool", title: "Enable keylock", defaultValue: false
-            input name: "debugEnabled", type: "bool", required: true, title: "Enabling debug logging"
+            input name: "enablePower", type: "bool", title: "Enable powermeter", defaultValue: false
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }        
 
         fingerprint profileId: "0104", deviceId: "119C", manufacturer: "Sinope Technologies", model: "TH1123ZB", deviceJoinName: "TH1123ZB"
@@ -48,12 +49,14 @@ def uninstalled() {
 }
 
 def initialize() {
-	trace("initialize", false);
+	trace("initialize", "info");
     unschedule();
     resetPower();
     configure();
     runEvery3Hours(configure)
-    powerRefresh();
+    if ( enablePower == true ) {
+        powerRefresh();
+    }
 }
 
 //-- Parsing ---------------------------------------------------------------------------------------------
@@ -64,7 +67,7 @@ def parse(String description) {
     def scale = getTemperatureScale()
     state.scale = scale
     def cluster = zigbee.parse(description)
-    trace("parse: ${description}", true)
+    trace("parse: ${description}", "debug")
     if (description?.startsWith("read attr -")) {
         def descMap = zigbee.parseDescriptionAsMap(description)
         result += createCustomMap(descMap)
@@ -116,14 +119,16 @@ private createCustomMap(descMap){
         map.name = "power"
         map.value = getActivePower(descMap.value)
         computeEnergy(map.value);
-        result << createEvent(name: "energy", value:state.energy.setScale(2, BigDecimal.ROUND_HALF_UP))
-        result << createEvent(name: "energyDuration", value:state.energyDuration)
-        result << createEvent(name: "totalHeatingRunTime", value:"${state.totalRunTime.setScale(2, BigDecimal.ROUND_HALF_UP)} minutes")
+        if ( enablePower == true ) {
+            result << createEvent(name: "energy", value:state.energy.setScale(2, BigDecimal.ROUND_HALF_UP))
+            result << createEvent(name: "energyDuration", value:state.energyDuration)
+            result << createEvent(name: "totalHeatingRunTime", value:"${state.totalRunTime.setScale(2, BigDecimal.ROUND_HALF_UP)} minutes")
+        }
     }
         
     if (map) {
-        // def isChange = isStateChange(device, map.name, map.value.toString())
-        trace("${map.name}: ${map.value} (${descMap})", true)
+        def isChange = isStateChange(device, map.name, map.value.toString())
+        trace("${map.name}: ${map.value} (${descMap})", "debug")
         map.displayed = isChange
         if ((map.name.toLowerCase().contains("temp")) || (map.name.toLowerCase().contains("setpoint"))) {
             map.scale = state.scale
@@ -138,7 +143,7 @@ private createCustomMap(descMap){
 /////////////////////////////////////////////////////////////////////////////
 
 def refresh() {
-    trace("refresh", true);
+    trace("refresh", "debug");
     
     def cmds = []    
     cmds += zigbee.readAttribute(0x0201, 0x0000) //Read Local Temperature
@@ -153,7 +158,7 @@ def refresh() {
 }   
 
 def powerRefresh() {
-    trace("powerRefresh", true);
+    trace("powerRefresh", "debug");
     def cmds = []    
     cmds += zigbee.readAttribute(0x0201, 0x0000) //Read Local Temperature
     cmds += zigbee.readAttribute(0x0201, 0x0008) //Read PI Heating State  
@@ -163,7 +168,7 @@ def powerRefresh() {
 }
 
 def configure(){    
-    trace("configure", true);
+    trace("configure", "debug");
         
     // Set unused default values
     sendEvent(name:"coolingSetpoint", value:getTemperature("0BB8")) // 0x0BB8 =  30 Celsius
@@ -242,7 +247,7 @@ def emergencyHeat() {
 }
 
 def heat() {
-    trace("heat(): mode set", false)
+    trace("heat(): mode set", "info")
     def cmds = []
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 04, [:], 1000) // MODE
     cmds += zigbee.writeAttribute(0x0201, 0x401C, 0x30, 04, [mfgCode: "0x1185"]) // SETPOINT MODE
@@ -250,7 +255,7 @@ def heat() {
 }
 
 def off() {
-    trace("off(): mode set", false);
+    trace("off(): mode set", "info");
     def cmds = []
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 0)
     sendZigbeeCommands(cmds)    
@@ -261,7 +266,7 @@ def setHeatingSetpoint(preciseDegrees) {
         def temperatureScale = getTemperatureScale()
         def degrees = new BigDecimal(preciseDegrees).setScale(1, BigDecimal.ROUND_HALF_UP)
         def cmds = []        
-        trace("setHeatingSetpoint(${degrees}:${temperatureScale})", false)
+        trace("setHeatingSetpoint(${degrees}:${temperatureScale})", "info")
         def celsius = (temperatureScale == "C") ? degrees as Float : (fahrenheitToCelsius(degrees) as Float).round(2)
         int celsius100 = Math.round(celsius * 100)
         cmds += zigbee.writeAttribute(0x0201, 0x0012, 0x29, celsius100) //Write Heat Setpoint
@@ -270,7 +275,7 @@ def setHeatingSetpoint(preciseDegrees) {
 }
 
 def setThermostatMode(String value) {
-    trace("setThermostatMode(${value})", false);
+    trace("setThermostatMode(${value})", "info");
     def currentMode = device.currentState("thermostatMode")?.value
     def lastTriedMode = state.lastTriedMode ?: currentMode ?: "heat"
     def modeNumber;
@@ -292,7 +297,7 @@ def setThermostatMode(String value) {
 }
 
 def eco() {
-    trace("eco()", false)
+    trace("eco()", "info")
     def cmds = []
     cmds += zigbee.writeAttribute(0x0201, 0x001C, 0x30, 04, [:], 1000) // MODE
     cmds += zigbee.writeAttribute(0x0201, 0x401C, 0x30, 05, [mfgCode: "0x1185"]) // SETPOINT MODE    
@@ -308,12 +313,12 @@ def resetPower() {
 }
 
 def deviceNotification(text) {
-    trace("deviceNotification(${text})", false)
+    trace("deviceNotification(${text})", "debug")
     double outdoorTemp = text.toDouble()
     def cmds = []
 
     if (prefDisplayOutdoorTemp) {
-        trace("deviceNotification() : Received outdoor weather : ${text} : ${outdoorTemp}", false)
+        trace("deviceNotification() : Received outdoor weather : ${text} : ${outdoorTemp}", "debug")
     
         //the value sent to the thermostat must be in C
         if (getTemperatureScale() == 'F') {    
@@ -325,7 +330,7 @@ def deviceNotification(text) {
         cmds += zigbee.writeAttribute(0xFF01, 0x0010, 0x29, outdoorTempDevice, [mfgCode: "0x119C"]) //set the outdoor temperature as integer
         sendZigbeeCommands(cmds)
     } else {
-        trace("deviceNotification() : Not setting any outdoor weather, since feature is disabled.", false)
+        trace("deviceNotification() : Not setting any outdoor weather, since feature is disabled.", "debug")
     }
 }
 
@@ -421,16 +426,15 @@ def isExpired(timestamp, delay) {
     return false;
 }
 
-def trace(message, debug) {
-    if (debug == true) {
+def trace(message, level) {
+    def output = "[${device.getLabel()}] ${message}";
+    if (level == "debug") {
         if (debugEnabled == true) { 
-            log.debug message
+            log.debug output
         }        
-    } else {
-        log.info message
+    } else if (level == "info") {
+        log.info output
+    } else if (level == "error") {
+        log.error output
     }
-}
-
-def traceError(msg){
-	log.error msg
 }

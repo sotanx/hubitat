@@ -22,7 +22,7 @@ def mainPage() {
             input "powerThreshold", "number", required: true, title: "Minimum power threshold (watt)"
             input "started", "number", required: true, title: "Started after X cycle where power > threshold"
             input "stopped", "number", required: true, title: "Stopped after X cycle where power < threshold"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
         section {        
 			input "powerSensor", "capability.powerMeter", title: "Select power meter", submitOnChange: true, required: true, multiple: false

@@ -26,7 +26,7 @@ def mainPage() {
             input "lockDelay", "number", required: true, title: "Locking delay (seconds)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
             input "suspendDelay", "number", required: true, title: "Suspend delay (seconds)"
-            input "debugEnabled", "bool", required: true, title: "Enabling debug logging"
+            input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
 	}
 }
