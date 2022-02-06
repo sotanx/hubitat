@@ -64,15 +64,10 @@ def initialize() {
 
 def lightToggled(evt) {
     // manual user interaction
-    if (evt.value == 2) {
-        trace("Suspending automatic action", "info")
-        state.suspended = true;
-        state.suspendTime = now()
-        runIn(suspendDelay, checkSuspend);        
-    } else {
-        state.suspended = false;
-        trace("Removing suspended state", "info")
-    }
+    trace("Suspending automatic action", "info")
+    state.suspended = true;
+    state.suspendTime = now()
+    runIn(suspendDelay, checkSuspend);        
 }
 
 def checkSuspend(evt) {
@@ -106,6 +101,9 @@ def checkStatus(evt) {
             // light is on
             if ( state.contact == "closed" ) {
                 trace("Turning off the light (contact)", "info");
+                light.off();
+            } else if ( isSunset() == false ) {
+                trace("Turning off the light (daytime)", "info");
                 light.off();
             }
         }
