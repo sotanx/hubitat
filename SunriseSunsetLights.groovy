@@ -94,16 +94,6 @@ def syncSwitchContact() {
     }
 }
 
-def canCloseLight() {
-    // can only turnoff the light automatically between midnight and sunrise
-    def currTime = currentDateTime();
-    def hours = currTime.hours;
-    if (hours >= 0 || hours < location.sunrise.hours) {
-        return true;
-    }
-    return false;
-}
-
 def checkStatus(evt) {
     def movement = false;
     def isSwitchOpen = masterSwitch.currentValue("switch") == "on";
