@@ -1,3 +1,5 @@
+#include helperLib.utils
+
 definition(
     name: "Device Power Meter",
     namespace: "hubitat",
@@ -136,22 +138,5 @@ def computeEnergy(newPower) {
     state.energyDuration = "${elapsed.setScale(2, BigDecimal.ROUND_HALF_UP)} Days";
     if (newPower > 0) {
         state.totalRunTime += (state.lastPowerTimestamp - lastPowerTimestamp)/1000.0/60.0; 
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// Common
-/////////////////////////////////////////////////////////////////////////////
-
-def trace(message, level) {
-    def output = "[${thisName}] ${message}";
-    if (level == "debug") {
-        if (debugEnabled == true) { 
-            log.debug output
-        }        
-    } else if (level == "info") {
-        log.info output
-    } else if (level == "error") {
-        log.error output
     }
 }

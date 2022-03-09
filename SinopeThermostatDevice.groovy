@@ -3,6 +3,8 @@
  *  Source: https://github.com/kris2k2/hubitat/drivers/kris2k2-Sinope-TH112XZB.groovy
  */
 
+#include helperLib.utils
+
 metadata {
 
     definition(name: "Sinope TH112XZB Thermostat", namespace: "hubitat", author: "David Hebert") {
@@ -411,30 +413,5 @@ def getHeatingDemand(value) {
     if (value != null) {
         def demand = Integer.parseInt(value, 16)
         return demand
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// Common
-/////////////////////////////////////////////////////////////////////////////
-
-def isExpired(timestamp, delay) {
-    def elapsed = now() - timestamp
-    if ( elapsed > ( delay * 1000 ) ) {
-        return true;
-    }
-    return false;
-}
-
-def trace(message, level) {
-    def output = "[${device.getLabel()}] ${message}";
-    if (level == "debug") {
-        if (debugEnabled == true) { 
-            log.debug output
-        }        
-    } else if (level == "info") {
-        log.info output
-    } else if (level == "error") {
-        log.error output
     }
 }

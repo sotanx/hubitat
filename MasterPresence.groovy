@@ -1,3 +1,5 @@
+#include helperLib.utils
+
 definition(
     name: "Away detector",
     namespace: "hubitat",
@@ -168,27 +170,3 @@ def powerHandler(evt) {
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Common
-/////////////////////////////////////////////////////////////////////////////
-
-def isExpired(timestamp, delay) {
-    def elapsed = now() - timestamp
-    if ( elapsed > ( delay * 1000 ) ) {
-        return true;
-    }
-    return false;
-}
-
-def trace(message, level) {
-    def output = "[${thisName}] ${message}";
-    if (level == "debug") {
-        if (debugEnabled == true) { 
-            log.debug output
-        }        
-    } else if (level == "info") {
-        log.info output
-    } else if (level == "error") {
-        log.error output
-    }
-}
