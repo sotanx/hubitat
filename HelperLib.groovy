@@ -48,8 +48,7 @@ def getElapsedSeconds(long timestamp) {
 }
 
 def isSunset() {
-    def currTime = currentDateTime();
-    if (currTime > location.sunrise && currTime < location.sunset) {
+    if (location.getMode() == "Night") {
         return false;
     }
     return true;

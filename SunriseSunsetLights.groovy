@@ -1,10 +1,5 @@
 #include helperLib.utils
 
-// switch && contact => alexa integration. Alexa turn on/off lights based on the contact
-// and she can turn off the lights with a voice command by closing the switch 
-// The app sync the switch status to the contact status
-// Limitation: Alexa can't close a contact, nor read the status of a switch
-
 definition(
     name: "SunriseSunsetLight",
     namespace: "hubitat",
@@ -26,12 +21,10 @@ def mainPage() {
         }
         section("Setup") {
             input "masterSwitch", "capability.switch", title: "Master switch sunrise/sunret"
-            input "masterContact", "capability.contactSensor", title: "Master contact sunrise/sunret"
             input "motionSensors", "capability.motionSensor", multiple: true, title: "Motion sensors"
             input "motionSwitches", "capability.switch", multiple: true, title: "Motion sensors (virtual switch)"
             input "lightDelay", "number", required: true, title: "Turning off light delay (seconds)"
             input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
-            input "debugTimeDelta", "number", required: true, title: "Time delta", defaultValue: 0
         }
 	}
 }
@@ -60,8 +53,8 @@ def initialize() {
     subscribe(motionSwitches, "switch", checkStatus);
     subscribe(motionSensors, "motion", checkStatus);
     subscribe(location, "mode", checkStatus)
-    subscribe(location, "systemStart", rebooted);
     state.lastMotion = currentDateTime().getTime();
+    runEvery5Minutes(checkStatus)
     checkStatus();
 }
 
@@ -81,23 +74,9 @@ def setMasterSwitchState(isOpen, open) {
     }
 }
 
-def syncSwitchContact() {
-    def switchOpen = masterSwitch.currentValue("switch") == "on";
-    def contactOpen = masterContact.currentValue("contact") == "open";
-    if ( switchOpen != contactOpen ) {
-        if (switchOpen == true) {
-            masterContact.open();
-        } else {
-            masterContact.close();
-        }
-        trace("Contact was synced with switch (Switch ${switchOpen})", "debug");
-    }
-}
-
 def checkStatus(evt) {
     def movement = false;
     def isSwitchOpen = masterSwitch.currentValue("switch") == "on";
-    def isContactOpen = masterContact.currentValue("contact") == "open";
     def sunset = isSunset();
     def now = currentDateTime();
 
@@ -120,30 +99,27 @@ def checkStatus(evt) {
     }
 
     def elapsed = getElapsedSeconds(state.lastMotion.toLong());
-    trace("Sunset=${sunset}, Switch ${isSwitchOpen}, Contact ${isContactOpen}, Last movement ${elapsed} sec ago, Now ${now.toString()}", "debug");
+    trace("IsSunset=${sunset}, Switch ${isSwitchOpen}, Last movement ${elapsed} sec ago, Now ${now.toString()}", "debug");
 
     // sunset
     if ( sunset == true ) {
         if (isSwitchOpen == false) {
-            if (now.hours >= location.sunset.hours && now.hours <= 22) {
-                // until 11, you can turn it on
-                setMasterSwitchState(isSwitchOpen, true);
+            if ( elapsed < lightDelay ) {
+                // movement detected... turn it on
+                if (now.hours <= 23) { // extra condition to prevent "late night snackers from opening this light..."
+                    setMasterSwitchState(isSwitchOpen, true);
+                }
             }
         } else {
-            // contact is on
-            if ( now.hours >= 0 && now.hours <= location.sunrise.hours ) {
-                if ( elapsed > lightDelay ) {
-                    // no movement for the delay... turn it off
-                    setMasterSwitchState(isSwitchOpen, false);
-                }
+            if ( elapsed > lightDelay ) {
+                // no movement for the delay... turn it off
+                setMasterSwitchState(isSwitchOpen, false);
             }
         }
     } else {
         // sunrise, no matter what... close the lights!
         setMasterSwitchState(isSwitchOpen, false);
     }
-    
-    syncSwitchContact();
 
     // recheck after the light delay
     runIn(lightDelay, checkStatus);

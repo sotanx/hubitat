@@ -57,7 +57,7 @@ def initialize() {
 	trace("initialize", "info");
     unschedule();
 	state.programmingMode = "";
-    runEvery5Minutes(poll);
+    runIn(15, "poll");
     runIn(5, "telnetConnection");
 }
 
@@ -72,7 +72,8 @@ def statusReport() {
 
 def poll() {
 	trace("Polling...", "debug")
-    sendTelnetCommand(tpiCommands["Poll"])
+    return new hubitat.device.HubAction("000", hubitat.device.Protocol.TELNET)
+    // sendTelnetCommand(tpiCommands["Poll"])
 }
 
 def configureAllZones() {

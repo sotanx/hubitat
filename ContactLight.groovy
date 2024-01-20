@@ -89,7 +89,7 @@ def checkStatus(evt) {
         }
     }    
 
-    trace("Light ${state.light} Sensor ${state.contact} Suspended ${state.suspended}", "debug");
+    trace("Light ${state.light} Sensor ${state.contact} IsSunset=${isSunset()} Suspended ${state.suspended}", "debug");
 
     if (state.suspended == false) {
         if ( state.light == "off" ) {
