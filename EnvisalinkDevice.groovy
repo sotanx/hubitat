@@ -57,7 +57,6 @@ def initialize() {
 	trace("initialize", "info");
     unschedule();
 	state.programmingMode = "";
-    runIn(15, "poll");
     runIn(5, "telnetConnection");
 }
 
@@ -72,8 +71,8 @@ def statusReport() {
 
 def poll() {
 	trace("Polling...", "debug")
-    return new hubitat.device.HubAction("000", hubitat.device.Protocol.TELNET)
-    // sendTelnetCommand(tpiCommands["Poll"])
+    sendTelnetCommand(tpiCommands["Poll"])
+    runIn(30, "poll");
 }
 
 def configureAllZones() {
@@ -129,8 +128,9 @@ def deleteZone(zoneId) {
 
 def telnetConnection(){
 	trace("telnetConnection", "debug")
-    telnetClose()
-	pauseExecution(5000)
+    unschedule();
+    telnetClose();
+	pauseExecution(5000);
 	try {
 		telnetConnect([termChars:[13,10]], ip, 4025, null, null)
 	} catch(e) {
@@ -140,32 +140,23 @@ def telnetConnection(){
 
 private sendTelnetCommand(String s) {
     s = generateChksum(s);
-	return new hubitat.device.HubAction(s, hubitat.device.Protocol.TELNET);
+	trace("sendTelnetCommand: ${s}", "debug");
+    sendHubCommand(new hubitat.device.HubAction(s, hubitat.device.Protocol.TELNET));
 }
 
 private sendTelnetLogin(){
 	trace("sendTelnetLogin: ${passwd}", "debug")
-    def cmdToSend = tpiCommands["Login"] + "${passwd}"
-    def cmdArray = cmdToSend.toCharArray()
-    def cmdSum = 0
-    cmdArray.each { cmdSum += (int)it }
-    def chkSumStr = DataType.pack(cmdSum, 0x08)
-    if(chkSumStr.length() > 2) {
-        chkSumStr = chkSumStr[-2..-1]
-    } 
-    cmdToSend += chkSumStr
-	cmdToSend = cmdToSend + "\r\n"
-	sendHubCommand(new hubitat.device.HubAction(cmdToSend, hubitat.device.Protocol.TELNET))
+    sendTelnetCommand(tpiCommands["Login"] + "${passwd}");
 }
 
 def telnetStatus(String status){
-	trace("telnetStatus- error: ${status}", "error")
+	trace("telnetStatus- error: ${status}", "debug")
 	if (status != "receive error: Stream is closed"){
-		trace("Telnet connection dropped...", "error")
+		trace("Telnet connection dropped...", "debug")
 	} else {
-		trace("Telnet is restarting...", "error")
+		trace("Telnet is restarting...", "debug")
 	}
-	runOnce(new Date(now() + 10000), telnetConnection)
+	runIn(15, telnetConnection)
 }
 
 def parse(String message) {
@@ -184,6 +175,7 @@ def parse(String message) {
                 case LOGINSUCCESSFUL:
                     trace(LOGINSUCCESSFUL, "info");
                     statusReport();
+                    runIn(30, "poll");
                     break;
                 case LOGINTIMEOUT:
                     trace(LOGINTIMEOUT, "error");
@@ -254,61 +246,6 @@ def parse(String message) {
             trace("Parsing unknown incoming message: [" + message + "] => ${messageId}\n\n", "debug");
             break;
     }
-
-    /*
-    if(tpiResponses[message.take(3) as int] == CODEREQUIRED) {
-        composeMasterCode()
-    }
-
-    if(tpiResponses[message.take(3) as int] == MASTERCODEREQUIRED) {
-        composeMasterCode()
-    }
-
-    if(tpiResponses[message.take(3) as int] == INSTALLERSCODEREQUIRED) {
-        composeInstallerCode()
-    }
-
-    if(tpiResponses[message.take(3) as int] == PARTITIONREADY) {
-        partitionReady()
-    }
-
-    if(tpiResponses[message.take(3) as int] == PARTITIONNOTREADY) {
-        partitionNotReady()
-    }
-
-    if(tpiResponses[message.take(3) as int] == PARTITIONINALARM) {
-        partitionAlarm()
-    }
-
-
-    if(tpiResponses[message.take(3) as int] == EXITDELAY) {
-        exitDelay()
-    }
-
-    if(tpiResponses[message.take(3) as int] == ENTRYDELAY) {
-        entryDelay()
-    }
-
-    if(tpiResponses[message.take(3) as int] == KEYPADLOCKOUT) {
-        keypadLockout()
-    }
-
-    if(tpiResponses[message.take(3) as int] == USEROPENING){
-        partitionArmedNight()
-        parseUser(message)
-    }
-
-    if(tpiResponses[message.take(3) as int] == USERCLOSING){
-        partitionArmedNight()
-        parseUser(message)
-    }
-
-    if(tpiResponses[message.take(3) as int] == SPECIALCLOSING){
-    }
-
-    if(tpiResponses[message.take(3) as int] == SPECIALOPENING){
-    }
-    */
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -381,7 +318,7 @@ private deleteUserCodeComplete(){
 private systemError(message){
 	def substringCount = message.size() - 3
 	message = message.substring(4,message.size()).replaceAll('0', '') as int
-	trace("System Error: ${message} - ${errorCodes[(message)]}", "error")
+	trace("System Error: ${message} - ${errorCodes[(message)]}", "debug")
 	if (errorCodes[(message)] == "Receive Buffer Overrun"){
 		composeKeyStrokes("#")
 	}
@@ -403,7 +340,7 @@ private zoneOpen(message, Boolean autoReset = false){
             if (zoneDevice.latestValue("motion") != "active") {
 			    trace("Motion ${deviceId} Active", "debug")
 			    zoneDevice.active()
-			    zoneDevice.sendEvent(name: "temperature", value: "", isStateChange: true)
+			    //zoneDevice.sendEvent(name: "temperature", value: "", isStateChange: true)
             }
 		}
 	}
@@ -561,17 +498,20 @@ private checkTimeStamp(message){
 	} else {
 		state.timeStampOn = false;
 	}
-	return message
+	return message;
 }
 
 private generateChksum(String cmdToSend){
-	def cmdArray = cmdToSend.toCharArray()
-	def cmdSum = 0
-	cmdArray.each { cmdSum += (int)it }
-	def chkSumStr = DataType.pack(cmdSum, 0x08)
-	if(chkSumStr.length() > 2) chkSumStr = chkSumStr[-2..-1]
-	cmdToSend += chkSumStr
-	cmdToSend
+    def cmdArray = cmdToSend.toCharArray();
+    def cmdSum = 0;
+    cmdArray.each { cmdSum += (int)it }
+    def chkSumStr = DataType.pack(cmdSum, 0x08);
+    if(chkSumStr.length() > 2) {
+        chkSumStr = chkSumStr[-2..-1];
+    } 
+    cmdToSend += chkSumStr;
+	cmdToSend = cmdToSend + "\r\n";
+    return cmdToSend;
 }
 
 def trace(message, level) {

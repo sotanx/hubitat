@@ -106,7 +106,7 @@ def checkStatus(evt) {
         if (isSwitchOpen == false) {
             if ( elapsed < lightDelay ) {
                 // movement detected... turn it on
-                if (now.hours <= 23) { // extra condition to prevent "late night snackers from opening this light..."
+                if (now.hours < 2 || now.hours >= 8 ) { // don't turn on after 2 in the morning
                     setMasterSwitchState(isSwitchOpen, true);
                 }
             }
