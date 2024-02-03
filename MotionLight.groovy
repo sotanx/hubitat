@@ -59,6 +59,7 @@ def initialize() {
     subscribe(light, "switch", checkStatus);
     subscribe(light, "pushed", lightPushed);
     subscribe(location, "systemStart", rebooted);
+    subscribe(location, "mode", checkStatus);
     state.waitingLightDelay = false;
     state.suspended = false;
     checkStatus();
@@ -90,10 +91,6 @@ def checkSuspend(evt) {
 }
 
 def checkStatus(evt) {
-    checkLight();
-}
-
-def checkLight(evt) {
     state.light = light.currentValue("switch");
     state.movement = false;
     state.present = false;
@@ -133,7 +130,7 @@ def checkLight(evt) {
                 if (state.waitingLightDelay == false) {
                     state.waitingLightDelay = true;
                     state.delayLightTime = now()
-                    runIn(lightDelay, checkLight);
+                    runIn(lightDelay, checkStatus);
                 } else {
                     if ( isExpired(state.delayLightTime, lightDelay) ) {
                         if ( state.present == false ) {
