@@ -24,7 +24,8 @@ def mainPage() {
             input "sensors", "capability.contactSensor", required: false, multiple: true, title: "Door/window sensors"
             input "weather", "capability.sensor", required: false, title: "Weather forecast device" 
             input "weatherThreshold", "number", required: true, title: "Forecast threshold temperature", defaultValue: 15
-            input "minTemp", "number", required: true, title: "Temperature threshold to switch to mode", defaultValue: 18
+            input "maxTemp", "number", required: true, title: "Max temperature to switch to cool mode", defaultValue: 21
+            input "minTemp", "number", required: true, title: "Min temperature to switch to heat mode", defaultValue: 20
             input "modeDelay", "number", required: true, title: "Set mode delay"
             input "debugEnabled", "bool", required: true, title: "Enable debug logging", defaultValue: false
         }
@@ -64,14 +65,21 @@ def initialize() {
 /////////////////////////////////////////////////////////////////////////////
 
 def setThermostatMode() {
-    if ( weather != null ) {
+    state.contact = false; // normal state
+    sensors.each { device ->
+        if ( device.currentValue("contact") == "open" ) {
+            state.contact = true;
+        }
+    }
+
+    if ( weather != null && state.contact == false) {
         state.mode = thermostat.currentValue("thermostatMode");
         state.temperature = thermostat.currentValue("temperature");
         state.forecast = weather.currentValue("forecastHigh");
         trace("checkThermostatMode Mode = ${state.mode}, Current temp = ${state.temperature}, ForecastHigh = ${state.forecast}", "debug");
         if ( state.forecast >= weatherThreshold ) {
             if (state.mode != "cool") {
-                if (state.mode == "off" || state.temperature > minTemp ) {
+                if (state.mode == "off" || state.temperature > maxTemp ) {
                     // only switch if the house is warm enough
                     trace("Setting HVAC to cool mode", "info");
                     thermostat.cool();

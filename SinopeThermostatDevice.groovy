@@ -166,7 +166,9 @@ def powerRefresh() {
     cmds += zigbee.readAttribute(0x0201, 0x0008) //Read PI Heating State  
     cmds += zigbee.readAttribute(0x0B04, 0x050B) //Read thermostat Active power
     sendZigbeeCommands(cmds)
-    runIn(30, powerRefresh);
+    if ( enablePower == true ) {
+        runIn(30, powerRefresh);
+    }
 }
 
 def configure(){    
